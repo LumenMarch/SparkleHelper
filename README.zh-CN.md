@@ -36,9 +36,6 @@ uv add sparklehelper
 pip install sparklehelper
 ```
 
-需要 Python ≥ 3.11。如需本地开发 SparkleHelper 本体，参见第 8 章「开发」
-的 editable 安装方式（含开发依赖）。
-
 ### 3.2. 在应用内使用
 
 macOS 上 Sparkle 必须在打包后的 `.app` bundle 内运行，因为它依赖 bundle

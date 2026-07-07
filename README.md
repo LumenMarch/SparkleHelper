@@ -38,9 +38,6 @@ uv add sparklehelper
 pip install sparklehelper
 ```
 
-Requires Python ≥ 3.11. To hack on SparkleHelper itself, see §8 Development
-for an editable install with dev dependencies.
-
 ### 3.2. Use in an app
 
 On macOS, Sparkle must run inside a packaged `.app` bundle because it depends
