@@ -13,54 +13,85 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.platform.label }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.platform.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - macos-latest
-          - windows-latest
         python-version:
           - "3.11"
           - "3.12"
           - "3.13"
           - "3.14"
+        platform:
+          - label: macos-arm64
+            runs-on: macos-latest
+            python-arch: arm64
+          - label: windows-x64
+            runs-on: windows-latest
+            python-arch: x64
+          - label: windows-x86
+            runs-on: windows-latest
+            python-arch: x86
+          - label: windows-arm64
+            runs-on: windows-11-arm
+            python-arch: arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          architecture: ${{ matrix.platform.python-arch }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-suffix: ${{ matrix.platform.label }}
 
       - name: Install dependencies
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv sync --locked --extra dev
 
       - name: Run tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv run --locked pytest
 
   build:
-    name: Build distributions (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build distributions (${{ matrix.label }})
+    runs-on: ${{ matrix.runs-on }}
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - label: macos
+            runs-on: macos-latest
+            python-arch: arm64
             artifact-name: dist-macos
             build-sdist: true
-          - os: windows-latest
-            artifact-name: dist-windows
+          - label: windows-x64
+            runs-on: windows-latest
+            python-arch: x64
+            artifact-name: dist-windows-x64
+            build-sdist: false
+          - label: windows-x86
+            runs-on: windows-latest
+            python-arch: x86
+            artifact-name: dist-windows-x86
+            build-sdist: false
+          - label: windows-arm64
+            runs-on: windows-11-arm
+            python-arch: arm64
+            artifact-name: dist-windows-arm64
             build-sdist: false
 
     steps:
@@ -68,14 +99,17 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-suffix: ${{ matrix.label }}
 
       - name: Build sdist
         if: matrix.build-sdist
@@ -84,6 +118,7 @@ jobs:
       - name: Build wheel
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv build --wheel
 
       - name: Upload distributions

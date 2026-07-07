@@ -78,8 +78,9 @@ def _macos_package_data() -> list[str]:
 def _windows_package_data() -> list[str]:
     """Windows：收集 winsparkle/<arch>/WinSparkle.dll + 头文件 + LICENSE。
 
-    收集全部 3 个架构（x64/x86/arm64），保证一个 win_amd64 wheel 在 amd64
-    上能按进程架构找到 DLL；CI 无需为每个架构单独产 wheel。
+    收集全部 3 个架构（x64/x86/arm64）：CI 为每个架构各产一个 wheel
+    （win_amd64 / win32 / win_arm64），运行时按进程架构选用对应 DLL；
+    单 wheel 内三架构冗余换取 pip 平台 tag 过滤的兼容性。
     """
     files = {
         "sparklehelper.nuitka-package.config.yml",
