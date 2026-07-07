@@ -176,6 +176,12 @@ def _patch_backend_for_controller(monkeypatch, *, delegate=None):
     monkeypatch.setattr(MacOSBackend, "get_sparkle", staticmethod(lambda: sparkle_mod))
 
 
+def _patch_macos_facade(monkeypatch):
+    """让 facade 测试在任意 CI 平台都稳定走 macOS 后端分支。"""
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(updater_mod, "get_backend", lambda: MacOSBackend())
+
+
 def _make_updater(monkeypatch, *, plist=None, delegate=None, start=False):
     """构造一个 Updater，注入 mock controller 与 plist。"""
     plist = plist if plist is not None else {
@@ -184,6 +190,7 @@ def _make_updater(monkeypatch, *, plist=None, delegate=None, start=False):
         "SUPublicEDKey": "test-key",
     }
 
+    _patch_macos_facade(monkeypatch)
     _patch_backend_for_controller(monkeypatch, delegate=delegate)
     # Updater.__init__ 经 updater 模块顶层 import 调用 bundle_info_plist，
     # 故 patch updater 模块命名空间里的引用（非 _runtime 命名空间）。
@@ -284,6 +291,7 @@ class _NullBackend:
 def _make_updater_with_feed_url(monkeypatch, feed_url, *, delegate=None, plist=None):
     """构造 Updater 并 patch controller，返回它（便于检查 delegate adapter）。"""
     plist = plist if plist is not None else {"CFBundleVersion": "1", "SUPublicEDKey": "test-key"}
+    _patch_macos_facade(monkeypatch)
     _patch_backend_for_controller(monkeypatch, delegate=delegate)
     monkeypatch.setattr(updater_mod, "bundle_info_plist", lambda: plist)
     monkeypatch.setattr(MacOSBackend, "load_sparkle", staticmethod(lambda *a, **kw: None))
@@ -332,6 +340,7 @@ def test_public_key_not_accepted_as_plist_replacement(monkeypatch):
     Sparkle 无运行时 EdDSA setter，plist 缺 SUPublicEDKey 时即使传了
     public_key 也必须 ConfigurationError。
     """
+    _patch_macos_facade(monkeypatch)
     monkeypatch.setattr(MacOSBackend, "load_sparkle", staticmethod(lambda *a, **kw: None))
     monkeypatch.setattr(updater_mod, "host_bundle_path", lambda: "/x.app")
     monkeypatch.setattr(
@@ -498,6 +507,7 @@ def test_methods_assert_main_thread(monkeypatch):
 
 
 def test_ensure_runnable_passes_when_all_ok(monkeypatch):
+    _patch_macos_facade(monkeypatch)
     monkeypatch.setattr(MacOSBackend, "load_sparkle", staticmethod(lambda *a, **kw: None))
     monkeypatch.setattr(updater_mod, "host_bundle_path", lambda: "/x.app")
     monkeypatch.setattr(
@@ -509,6 +519,7 @@ def test_ensure_runnable_passes_when_all_ok(monkeypatch):
 
 
 def test_ensure_runnable_missing_feed_url(monkeypatch):
+    _patch_macos_facade(monkeypatch)
     monkeypatch.setattr(MacOSBackend, "load_sparkle", staticmethod(lambda *a, **kw: None))
     monkeypatch.setattr(updater_mod, "host_bundle_path", lambda: "/x.app")
     monkeypatch.setattr(updater_mod, "bundle_info_plist", lambda: {"CFBundleVersion": "1"})
