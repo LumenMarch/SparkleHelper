@@ -11,29 +11,24 @@ permissions:
 
 jobs:
   build:
-    name: Build distributions (${{ matrix.label }})
-    runs-on: ${{ matrix.runs-on }}
+    name: Build distributions (${{ matrix.artifact-name }})
+    runs-on: ${{ matrix.runs-on || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: macos
-            runs-on: macos-latest
-            python-arch: arm64
+          - os: macos-latest
             artifact-name: dist-macos
             build-sdist: true
-          - label: windows-x64
-            runs-on: windows-latest
+          - runs-on: windows-latest
             python-arch: x64
             artifact-name: dist-windows-x64
             build-sdist: false
-          - label: windows-x86
-            runs-on: windows-latest
+          - runs-on: windows-latest
             python-arch: x86
             artifact-name: dist-windows-x86
             build-sdist: false
-          - label: windows-arm64
-            runs-on: windows-11-arm
+          - runs-on: windows-11-arm
             python-arch: arm64
             artifact-name: dist-windows-arm64
             build-sdist: false
@@ -53,7 +48,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-suffix: ${{ matrix.label }}
+          cache-suffix: ${{ matrix.artifact-name }}
 
       - name: Build sdist
         if: matrix.build-sdist
