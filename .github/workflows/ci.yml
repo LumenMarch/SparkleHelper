@@ -24,7 +24,7 @@ jobs:
           - "3.13"
           - "3.14"
         platform:
-          - label: macos-arm64
+          - label: macos-latest
             runs-on: macos-latest
             python-arch: arm64
           - label: windows-x64
@@ -131,6 +131,4 @@ jobs:
       - name: Attach to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ github.ref_name }}" dist/* \
-            --clobber
+        run: gh release upload "${{ github.ref_name }}" dist/*
