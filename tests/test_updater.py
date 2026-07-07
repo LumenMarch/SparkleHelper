@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import sys
 import threading
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -404,6 +406,14 @@ def test_can_check_for_updates(monkeypatch):
             return self
 
     monkeypatch.setattr(_runtime, "get_kvo_observer_class", lambda: _Observer)
+    monkeypatch.setitem(
+        sys.modules,
+        "Foundation",
+        SimpleNamespace(
+            NSKeyValueObservingOptionInitial=1,
+            NSKeyValueObservingOptionNew=2,
+        ),
+    )
     values = []
     subscription = u.observe("update_check_interval", values.append)
     observer, key_path = u._backend._updater._observers[0]
