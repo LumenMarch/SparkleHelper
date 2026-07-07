@@ -31,9 +31,15 @@ the native updater on each platform. It solves three things:
 ### 3.1. Install
 
 ```bash
-# Install this repo in editable mode, including dev dependencies
-uv pip install -e ".[dev]"
+# uv project
+uv add sparklehelper
+
+# or plain pip
+pip install sparklehelper
 ```
+
+Requires Python ≥ 3.11. To hack on SparkleHelper itself, see §8 Development
+for an editable install with dev dependencies.
 
 ### 3.2. Use in an app
 
