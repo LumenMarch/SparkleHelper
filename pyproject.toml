@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SparkleHelper"
+version = "0.1.0"
+description = "Python runtime interface for Sparkle and WinSparkle app updates"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "SparkleHelper Contributors" }]
+keywords = [
+    "sparkle",
+    "winsparkle",
+    "macos",
+    "windows",
+    "auto-update",
+    "pyobjc",
+    "software-update",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: MacOS X",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyobjc-core>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+demo = [
+    "wxPython>=4.2",
+    "pyinstaller>=6.21.0",
+    "nuitka>=4.1.2",
+]
+demo-qt = [
+    "PySide6>=6.7",
+    "pyinstaller>=6.21.0",
+    "nuitka>=4.1.2",
+]
+
+[project.scripts]
+# 提供 Nuitka / PyInstaller 构建资源 wrapper。
+sparklehelper = "sparklehelper._framework:main"
+
+[project.entry-points."pyinstaller40"]
+# 让 PyInstaller 自动发现本包的 hook 目录，打包时收集平台原生更新资源。
+hook-dirs = "sparklehelper._pyinstaller:get_hook_dirs"
+
+[project.urls]
+Homepage = "https://github.com/LumenMarch/SparkleHelper"
+Repository = "https://github.com/LumenMarch/SparkleHelper"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra -q"

@@ -1,0 +1,31 @@
+- module-name: 'sparklehelper' # checksum: 111d23ec
+  data-files:
+    - raw_dirs:
+        - 'Sparkle.framework'
+      dest_path: '.'
+      when: 'macos'
+  dlls:
+    - from_filenames:
+        relative_path: 'winsparkle/x64'
+        prefixes:
+          - 'WinSparkle'
+        suffixes:
+          - 'dll'
+      dest_path: '.'
+      when: 'win32 and arch_amd64'
+    - from_filenames:
+        relative_path: 'winsparkle/x86'
+        prefixes:
+          - 'WinSparkle'
+        suffixes:
+          - 'dll'
+      dest_path: '.'
+      when: 'win32 and arch_x86'
+    - from_filenames:
+        relative_path: 'winsparkle/arm64'
+        prefixes:
+          - 'WinSparkle'
+        suffixes:
+          - 'dll'
+      dest_path: '.'
+      when: 'win32 and arch_arm64'

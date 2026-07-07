@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 构建产物 / 安装产物
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境（本项目用 uv）
+.venv/
+venv/
+env/
+ENV/
+
+# 测试 / 类型 / 覆盖率缓存
+.tox/
+.nox/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+coverage.xml
+*.cover
+*.py,cover
+
+# ─────────────────────────────────────────────────────────────
+# PyInstaller / demo 构建产物
+# ─────────────────────────────────────────────────────────────
+examples/demo_app/build/
+examples/demo_app/dist/
+*.spec.bak
+
+# Sparkle.framework 由 `sparklehelper fetch` 重新生成，不入库（体积大、
+# 平台专属二进制 + 签名）。
+examples/demo_app/vendor/
+
+# ─────────────────────────────────────────────────────────────
+# Native 依赖（构建期由 scripts/sync_native_deps.py 重新生成）
+# ─────────────────────────────────────────────────────────────
+# wheel 构建阶段下载/校验/解包 Sparkle.framework、WinSparkle.dll 与
+# 对应第三方 license，缓存于 build/native-cache/（已被上方 build/ 覆盖）。
+# 源码仓库只保留 winsparkle.h。
+src/sparklehelper/Sparkle.framework/
+src/sparklehelper/Sparkle.framework.symlinks.json
+src/sparklehelper/licenses/*.txt
+src/sparklehelper/winsparkle/*/WinSparkle.dll
+
+# ─────────────────────────────────────────────────────────────
+# uv
+# ─────────────────────────────────────────────────────────────
+# uv.lock 应入库（保证可复现安装）；仅忽略本地临时。
+# 如需忽略 lock，取消下一行注释。
+# uv.lock
+
+# ─────────────────────────────────────────────────────────────
+# 编辑器 / IDE
+# ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─────────────────────────────────────────────────────────────
+# 本地配置 / 密钥
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key

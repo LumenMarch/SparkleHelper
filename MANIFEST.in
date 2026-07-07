@@ -1,0 +1,19 @@
+# Sparkle.framework 与 WinSparkle.dll 由 scripts/sync_native_deps.py 在 wheel
+# 构建期生成到源码树；sdist 仅含源码，不应携带这些大体积 native 产物。
+# （MANIFEST.in 只影响 sdist，不影响 wheel；wheel 由 package_data 决定。）
+include LICENSE
+prune src/sparklehelper/Sparkle.framework
+prune src/sparklehelper/licenses
+exclude src/sparklehelper/Sparkle.framework.symlinks.json
+global-exclude WinSparkle.dll
+
+# 上游源码 submodule 只用于仓库中的版本锁定与 GitHub 展示；sdist 仍保持轻量。
+prune Sparkle
+prune winsparkle
+
+# sdist 必须携带同步脚本与小型源码资源，否则从 sdist 构建 wheel 会失败：
+# - scripts/ 不是 Python 包，不会被自动收录，但 setup.py 构建期依赖它；
+# - winsparkle.h 属于 Windows 的 package_data，在非 Windows 构建的
+#   sdist 中不会被自动收集，需显式包含以保证跨平台可构建。
+recursive-include scripts *.py
+include src/sparklehelper/winsparkle/winsparkle.h

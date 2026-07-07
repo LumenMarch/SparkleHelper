@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sparklehelper Demo 的 Info.plist 模板。
+
+  打包时 build.spec 用 info_plist= 注入这些键，本模板仅作参考与离线预览。
+  占位符 {{...}} 需在发布前替换为真实值。
+
+  关键 Sparkle 键说明：
+    SUFeedURL         appcast.xml 的公开 URL（必需）
+    SUPublicEDKey     EdDSA 公钥，用于校验更新签名（必需）
+    SUEnableAutomaticChecks  是否开启自动检查
+    SUScheduledCheckInterval 检查间隔（秒）
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>sparklehelper Demo</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.example.sparklehelper.demo</string>
+    <key>CFBundleVersion</key>
+    <string>{{BUILD_VERSION}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{DISPLAY_VERSION}}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Sparkle -->
+    <key>SUFeedURL</key>
+    <string>{{FEED_URL}}</string>
+    <key>SUPublicEDKey</key>
+    <string>{{ED_KEY}}</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+</dict>
+</plist>

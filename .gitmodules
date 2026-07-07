@@ -1,0 +1,6 @@
+[submodule "Sparkle"]
+	path = Sparkle
+	url = https://github.com/sparkle-project/Sparkle.git
+[submodule "winsparkle"]
+	path = winsparkle
+	url = https://github.com/vslavik/winsparkle.git
