@@ -56,8 +56,9 @@ def reset_windows_cache():
 
 def test_current_arch_x64(monkeypatch):
     monkeypatch.setattr("platform.machine", lambda: "amd64")
-    # 64 位进程（本机 darwin arm64 跑 64 位 Python）
-    assert _loading.current_arch() in ("x64", "arm64")
+    # 模拟 64 位进程，不依赖本机 Python 位数（x86 runner 上也能验证 x64 分支）
+    monkeypatch.setattr("struct.calcsize", lambda _: 8)
+    assert _loading.current_arch() == "x64"
 
 
 def test_current_arch_arm64(monkeypatch):
