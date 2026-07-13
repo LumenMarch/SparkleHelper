@@ -3,6 +3,7 @@
 # （MANIFEST.in 只影响 sdist，不影响 wheel；wheel 由 package_data 决定。）
 include LICENSE
 prune src/sparklehelper/Sparkle.framework
+prune src/sparklehelper/bin
 prune src/sparklehelper/licenses
 exclude src/sparklehelper/Sparkle.framework.symlinks.json
 global-exclude WinSparkle.dll

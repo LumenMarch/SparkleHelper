@@ -17,7 +17,7 @@ Objective-C / Swift or Win32 update plumbing.
 [WinSparkle](https://github.com/vslavik/winsparkle) are mature native update
 frameworks, but they expose platform-specific Objective-C and C APIs.
 SparkleHelper gives Python desktop apps one runtime facade while preserving
-the native updater on each platform. It solves three things:
+the native updater on each platform. It solves four things:
 
 1. **Runtime loading** — dynamically load the bundled `Sparkle.framework` on
    macOS or `WinSparkle.dll` on Windows.
@@ -25,6 +25,8 @@ the native updater on each platform. It solves three things:
    `SPUStandardUpdaterController` / `SPUUpdater` and the WinSparkle C API.
 3. **Offline packaging** — ship platform-native update runtimes inside wheels
    and let supported bundlers collect them without network access.
+4. **Release authoring** — bundle the matching upstream tools for generating
+   keys, signing update archives, and producing macOS appcasts.
 
 ## 3. Quick start
 
@@ -224,9 +226,37 @@ uv run sparklehelper nuitka \
   demo.py
 ```
 
-The wheel does not include Sparkle release authoring tools such as
-`generate_keys` or `sign_update`; obtain those separately when producing
-signed updates.
+### 5.3. Release authoring CLI
+
+Platform wheels include the matching upstream release authoring tools. The
+wrapper forwards all arguments and preserves the native tool's exit code.
+
+Generate or manage an EdDSA signing key:
+
+```bash
+uv run sparklehelper release keys --help
+```
+
+Sign an update archive:
+
+```bash
+uv run sparklehelper release sign --help
+```
+
+Generate or update an appcast and its delta updates on macOS:
+
+```bash
+uv run sparklehelper release appcast --help
+uv run sparklehelper release appcast ./releases
+```
+
+On macOS these commands invoke Sparkle's bundled universal2 `generate_keys`,
+`sign_update`, `generate_appcast`, and `BinaryDelta` tools. On Windows x64 and
+ARM64, `keys` and `sign` invoke the official x64 `winsparkle-tool.exe`; Windows
+ARM64 relies on the operating system's x64 translation. Windows x86 release
+authoring and Windows appcast generation are not supported. These restrictions
+only affect release authoring—the WinSparkle runtime remains available in all
+three Windows wheel architectures.
 
 ## 6. API overview
 

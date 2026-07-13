@@ -57,8 +57,14 @@ def _add_existing_license(files: set[str], filename: str) -> None:
 
 
 def _macos_package_data() -> list[str]:
-    """macOS：收集 Sparkle.framework + 共享文件。"""
-    files = {"sparklehelper.nuitka-package.config.yml"}
+    """macOS：收集 Sparkle.framework、发布工具与共享文件。"""
+    files = {
+        "bin/BinaryDelta",
+        "bin/generate_appcast",
+        "bin/generate_keys",
+        "bin/sign_update",
+        "sparklehelper.nuitka-package.config.yml",
+    }
     _add_existing_license(files, "Sparkle-LICENSE.txt")
     if _FRAMEWORK_SYMLINK_MANIFEST.is_file():
         files.add(str(_FRAMEWORK_SYMLINK_MANIFEST.relative_to(_PACKAGE_DIR)))
@@ -76,16 +82,19 @@ def _macos_package_data() -> list[str]:
 
 
 def _windows_package_data() -> list[str]:
-    """Windows：收集 winsparkle/<arch>/WinSparkle.dll + 头文件 + LICENSE。
+    """Windows：收集 WinSparkle.dll、发布工具、头文件与 LICENSE。
 
     收集全部 3 个架构（x64/x86/arm64）：CI 为每个架构各产一个 wheel
     （win_amd64 / win32 / win_arm64），运行时按进程架构选用对应 DLL；
     单 wheel 内三架构冗余换取 pip 平台 tag 过滤的兼容性。
+    x64 与 ARM64 wheel 额外携带官方 x64 发布工具；x86 wheel 不携带。
     """
     files = {
         "sparklehelper.nuitka-package.config.yml",
         "winsparkle/winsparkle.h",
     }
+    if struct.calcsize("P") * 8 == 64:
+        files.add("bin/winsparkle-tool.exe")
     _add_existing_license(files, "WinSparkle-LICENSE.txt")
     for arch in ("x64", "x86", "arm64"):
         dll = _WINSPARKLE_DIR / arch / "WinSparkle.dll"

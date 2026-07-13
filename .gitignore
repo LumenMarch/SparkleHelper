@@ -63,11 +63,12 @@ examples/demo_app/vendor/
 # ─────────────────────────────────────────────────────────────
 # Native 依赖（构建期由 scripts/sync_native_deps.py 重新生成）
 # ─────────────────────────────────────────────────────────────
-# wheel 构建阶段下载/校验/解包 Sparkle.framework、WinSparkle.dll 与
-# 对应第三方 license，缓存于 build/native-cache/（已被上方 build/ 覆盖）。
+# wheel 构建阶段下载/校验/解包 native runtime、发布工具与对应第三方
+# license，缓存于 build/native-cache/（已被上方 build/ 覆盖）。
 # 源码仓库只保留 winsparkle.h。
 src/sparklehelper/Sparkle.framework/
 src/sparklehelper/Sparkle.framework.symlinks.json
+src/sparklehelper/bin/
 src/sparklehelper/licenses/*.txt
 src/sparklehelper/winsparkle/*/WinSparkle.dll
 

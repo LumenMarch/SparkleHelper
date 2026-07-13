@@ -37,12 +37,11 @@ macOS 11 及以上。PyInstaller 和 Nuitka 会直接收集该副本，
 Sparkle 用 EdDSA 签名更新包，appcast 引用公钥校验。
 
 ```bash
-# 使用 Sparkle 官方 release 单独提供的命令行工具
-/path/to/Sparkle/bin/generate_keys        # 生成密钥（写入钥匙串）
-/path/to/Sparkle/bin/export_signing_tool  # 导出公钥
+# 生成密钥并写入 macOS 钥匙串，同时输出公钥
+uv run sparklehelper release keys
 ```
 
-把导出的**公钥**填进 `build.spec` 的 `SUPublicEDKey`。
+把输出的**公钥**填进 `build.spec` 的 `SUPublicEDKey`。
 
 ### 4.3. 托管 appcast.xml
 
@@ -72,7 +71,7 @@ Sparkle 用 EdDSA 签名更新包，appcast 引用公钥校验。
 签名更新包：
 
 ```bash
-/path/to/Sparkle/bin/sign_update \
+uv run sparklehelper release sign \
     ./SparkleHelperDemo-0.2.0.dmg
 # 输出形如: edSignature="..." length=12345678
 ```

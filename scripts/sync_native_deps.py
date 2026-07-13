@@ -2,7 +2,7 @@
 
 只用 Python 标准库（GitHub latest release API、``urllib`` 下载、``hashlib``
 校验、``tarfile`` / ``zipfile`` 解包），在 ``uv build --wheel`` 阶段把上游
-预编译资产准备到位。运行时 API、loader 路径约定、wheel 内目录结构均不改变。
+预编译 runtime 与发布工具准备到位。运行时 API 与 loader 路径约定均不改变。
 
 设计要点：
 
@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import sys
 import tarfile
 import urllib.error
@@ -46,6 +47,12 @@ _SPARKLE = {
     "repo": "sparkle-project/Sparkle",
     "asset_pattern": r"^Sparkle-(?P<version>.+)\.tar\.xz$",
     "extract_root": "Sparkle.framework",
+    "tools": {
+        "bin/BinaryDelta": "bin/BinaryDelta",
+        "bin/generate_appcast": "bin/generate_appcast",
+        "bin/generate_keys": "bin/generate_keys",
+        "bin/sign_update": "bin/sign_update",
+    },
     "license": {
         "source": "LICENSE",
         "target": "licenses/Sparkle-LICENSE.txt",
@@ -64,6 +71,10 @@ _WINSPARKLE = {
         "WinSparkle-{version}/x64/Release/WinSparkle.dll": "winsparkle/x64/WinSparkle.dll",
         "WinSparkle-{version}/Release/WinSparkle.dll": "winsparkle/x86/WinSparkle.dll",
         "WinSparkle-{version}/ARM64/Release/WinSparkle.dll": "winsparkle/arm64/WinSparkle.dll",
+    },
+    "tool": {
+        "source": "WinSparkle-{version}/bin/winsparkle-tool.exe",
+        "target": "bin/winsparkle-tool.exe",
     },
 }
 
@@ -301,13 +312,53 @@ def _extract_framework_subset(
         )
 
 
+def _extract_tar_files(
+    tar: tarfile.TarFile,
+    dest: Path,
+    paths: dict[str, str],
+) -> None:
+    """从 tarball 提取指定普通文件，并保留可执行位。"""
+    remaining = dict(paths)
+    for member in tar.getmembers():
+        name = member.name[2:] if member.name.startswith("./") else member.name
+        target_name = remaining.get(name)
+        if target_name is None:
+            continue
+        if not member.isreg():
+            raise NativeSyncError(f"tarball 成员不是普通文件: {member.name}")
+        source = tar.extractfile(member)
+        if source is None:
+            raise NativeSyncError(f"无法读取 tar 成员: {member.name}")
+        target = dest / target_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with source, target.open("wb") as out:
+            shutil.copyfileobj(source, out)
+        os.chmod(target, member.mode)
+        remaining.pop(name)
+
+    if remaining:
+        raise NativeSyncError(
+            f"tarball 内缺少发布工具，上游资产结构可能已变化: {sorted(remaining)}"
+        )
+
+
+def _sparkle_tool_target_paths() -> list[Path]:
+    return [_PACKAGE_DIR / target for target in _SPARKLE["tools"].values()]
+
+
 def sync_sparkle_framework() -> None:
-    """准备 macOS ``Sparkle.framework``。"""
+    """准备 macOS ``Sparkle.framework`` 与发布工具。"""
     target = _framework_target()
     if _skip_sync_enabled():
-        if _framework_valid() and _license_valid(_SPARKLE):
+        tool_targets = _sparkle_tool_target_paths()
+        if (
+            _framework_valid()
+            and all(path.is_file() and path.stat().st_size > 0 for path in tool_targets)
+            and _license_valid(_SPARKLE)
+        ):
             return
         missing = [str(target)] if not _framework_valid() else []
+        missing.extend(str(path) for path in tool_targets if not path.is_file())
         if not _license_valid(_SPARKLE):
             missing.append(str(_license_target(_SPARKLE)))
         raise NativeSyncError(
@@ -324,6 +375,7 @@ def sync_sparkle_framework() -> None:
     extract_root.mkdir(parents=True)
     with tarfile.open(archive, "r:xz") as tar:
         _extract_framework_subset(tar, extract_root, _SPARKLE["extract_root"])
+        _extract_tar_files(tar, extract_root, _SPARKLE["tools"])
 
     source = extract_root / _SPARKLE["extract_root"]
     if not source.is_dir():
@@ -331,6 +383,11 @@ def sync_sparkle_framework() -> None:
     if target.exists() or target.is_symlink():
         shutil.rmtree(target)
     shutil.copytree(source, target, symlinks=True)
+    for relative_target in _SPARKLE["tools"].values():
+        source_tool = extract_root / relative_target
+        target_tool = _PACKAGE_DIR / relative_target
+        target_tool.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_tool, target_tool)
     _sync_license(_SPARKLE, asset["release"])
 
 
@@ -345,10 +402,22 @@ def _winsparkle_target_paths() -> list[Path]:
     return [_PACKAGE_DIR / dst for dst in _WINSPARKLE["extract"].values()]
 
 
+def _winsparkle_tool_paths(version: str) -> tuple[str, Path]:
+    tool = _WINSPARKLE["tool"]
+    return tool["source"].format(version=version), _PACKAGE_DIR / tool["target"]
+
+
+def _include_winsparkle_tool() -> bool:
+    """x64 与 ARM64 构建携带官方 x64 发布工具；x86 构建不携带。"""
+    return struct.calcsize("P") * 8 == 64
+
+
 def sync_winsparkle() -> None:
-    """准备 Windows 三架构 ``WinSparkle.dll``。"""
+    """准备 Windows 三架构 DLL，并按构建架构准备发布工具。"""
     if _skip_sync_enabled():
         targets = _winsparkle_target_paths()
+        if _include_winsparkle_tool():
+            targets.append(_PACKAGE_DIR / _WINSPARKLE["tool"]["target"])
         if (
             all(path.is_file() and path.stat().st_size > 0 for path in targets)
             and _license_valid(_WINSPARKLE)
@@ -369,6 +438,9 @@ def sync_winsparkle() -> None:
         src: _PACKAGE_DIR / dst
         for src, dst in _winsparkle_extract_paths(asset["version"]).items()
     }
+    if _include_winsparkle_tool():
+        tool_source, tool_target = _winsparkle_tool_paths(asset["version"])
+        targets[tool_source] = tool_target
     with zipfile.ZipFile(archive) as zf:
         available = set(zf.namelist())
         for src, dest in targets.items():

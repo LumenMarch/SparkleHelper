@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SparkleHelper"
-version = "0.1.1"
+version = "0.1.2"
 description = "Python runtime interface for Sparkle and WinSparkle app updates"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -52,7 +52,7 @@ demo-qt = [
 ]
 
 [project.scripts]
-# 提供 Nuitka / PyInstaller 构建资源 wrapper。
+# 提供 Nuitka / PyInstaller 构建 wrapper 与发布制作 CLI。
 sparklehelper = "sparklehelper._framework:main"
 
 [project.entry-points."pyinstaller40"]

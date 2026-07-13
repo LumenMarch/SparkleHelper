@@ -1,4 +1,4 @@
-"""定位 sparklehelper 随包分发的构建资源。"""
+"""定位随包分发的构建资源，并提供构建与发布制作 CLI。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -893,11 +894,77 @@ def _run_pyinstaller(arguments: list[str]) -> int:
                 pass
 
 
+def _release_help_text() -> str:
+    return """usage: sparklehelper release COMMAND [tool options]
+
+Run the bundled upstream release authoring tools.
+
+Commands:
+  keys       Generate or manage EdDSA signing keys.
+  sign       Sign an update file.
+  appcast    Generate an appcast and delta updates (macOS only).
+
+macOS supports all commands. Windows x64 and ARM64 support keys and sign
+through the official x64 winsparkle-tool; Windows x86 is not supported.
+Arguments after COMMAND are forwarded to the upstream tool.
+"""
+
+
+def _release_command(command: str) -> list[str]:
+    if sys.platform == "darwin":
+        tools = {
+            "keys": [_PACKAGE_DIR / "bin" / "generate_keys"],
+            "sign": [_PACKAGE_DIR / "bin" / "sign_update"],
+            "appcast": [_PACKAGE_DIR / "bin" / "generate_appcast"],
+        }
+    elif sys.platform == "win32":
+        if struct.calcsize("P") * 8 == 32:
+            raise ValueError("Windows x86 不支持发布制作 CLI")
+        tool = _PACKAGE_DIR / "bin" / "winsparkle-tool.exe"
+        tools = {
+            "keys": [tool, "generate-key"],
+            "sign": [tool, "sign"],
+        }
+    else:
+        raise ValueError("发布制作 CLI 仅支持 macOS 与 Windows")
+
+    native_command = tools.get(command)
+    if native_command is None:
+        if command == "appcast" and sys.platform == "win32":
+            raise ValueError("appcast 命令仅支持 macOS")
+        raise ValueError(f"未知发布命令: {command}")
+    if not native_command[0].is_file():
+        raise ValueError(f"wheel 内缺少发布工具: {native_command[0]}")
+    return [str(argument) for argument in native_command]
+
+
+def _run_release(arguments: list[str]) -> int:
+    """运行随 wheel 分发的 Sparkle / WinSparkle 官方发布工具。"""
+    if not arguments or arguments[0] in {"-h", "--help"}:
+        print(_release_help_text(), end="")
+        return 0
+
+    try:
+        command = _release_command(arguments[0])
+    except ValueError as exc:
+        print(f"sparklehelper release: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        return subprocess.run(
+            [*command, *arguments[1:]],
+            check=False,
+        ).returncode
+    except OSError as exc:
+        print(f"Failed to start release tool: {exc}", file=sys.stderr)
+        return 1
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    """构造构建资源查询与 Nuitka 包装命令的 CLI parser。"""
+    """构造构建与发布制作命令的 CLI parser。"""
     parser = argparse.ArgumentParser(
         prog="sparklehelper",
-        description="SparkleHelper build resource utilities.",
+        description="SparkleHelper build and release utilities.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(
@@ -914,6 +981,11 @@ def _build_parser() -> argparse.ArgumentParser:
         add_help=False,
         help="Run PyInstaller with onefile macOS .app spec patching.",
     )
+    subparsers.add_parser(
+        "release",
+        add_help=False,
+        help="Run bundled release authoring tools.",
+    )
     return parser
 
 
@@ -924,6 +996,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_nuitka(arguments[1:])
     if arguments and arguments[0] == "pyinstaller":
         return _run_pyinstaller(arguments[1:])
+    if arguments and arguments[0] == "release":
+        return _run_release(arguments[1:])
 
     args = _build_parser().parse_args(arguments)
     if args.command == "nuitka-config":
