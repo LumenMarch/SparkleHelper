@@ -33,6 +33,7 @@ def main() -> int:
     # sparklehelper 只能在打包后的 .app 内运行；构造 Updater 前聚合检查。
     try:
         import wx
+
         from sparklehelper import Updater
 
         app = wx.App()

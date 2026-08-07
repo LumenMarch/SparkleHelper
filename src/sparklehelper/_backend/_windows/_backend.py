@@ -16,8 +16,7 @@ Windows 上交由 WinSparkle 自身管理）。
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from ..base import Callbacks, UpdateConfig
 from . import _bindings, _loading
@@ -49,7 +48,7 @@ class WindowsBackend:
         return _loading.is_loaded()
 
     @classmethod
-    def loaded_path(cls) -> Optional[str]:
+    def loaded_path(cls) -> str | None:
         """已加载 DLL 的磁盘路径；未加载时为 None。"""
         return _loading.loaded_path()
 
@@ -192,7 +191,7 @@ class WindowsBackend:
         self._dll.win_sparkle_set_update_check_interval(int(seconds))
 
     @property
-    def last_update_check_date(self) -> Optional[datetime]:
+    def last_update_check_date(self) -> datetime | None:
         """上次检查时间（UTC aware）。
 
         WinSparkle 默认返回 -1 表示从未检查；0 及任何非正值（含可能的
@@ -201,15 +200,15 @@ class WindowsBackend:
         timestamp = self._dll.win_sparkle_get_last_check_time()
         if timestamp <= 0:
             return None
-        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        return datetime.fromtimestamp(timestamp, tz=UTC)
 
     @property
-    def http_headers(self) -> Optional[dict[str, str]]:
+    def http_headers(self) -> dict[str, str] | None:
         """WinSparkle 无 getter，始终返回 None。"""
         return None
 
     @http_headers.setter
-    def http_headers(self, headers: Optional[dict[str, str]]) -> None:
+    def http_headers(self, headers: dict[str, str] | None) -> None:
         """设置请求头；传入 None 清除全部。"""
         self._dll.win_sparkle_clear_http_headers()
         if headers:
@@ -260,7 +259,7 @@ class WindowsBackend:
         """macOS-only：``resetUpdateCycleAfterShortDelay``。WinSparkle 无对应物。"""
         raise self._unsupported("reset_update_cycle_after_short_delay")
 
-    def clear_feed_url_from_user_defaults(self) -> Optional[str]:
+    def clear_feed_url_from_user_defaults(self) -> str | None:
         """macOS-only：``clearFeedURLFromUserDefaults``。WinSparkle 无对应物。"""
         raise self._unsupported("clear_feed_url_from_user_defaults")
 
@@ -285,7 +284,7 @@ class WindowsBackend:
         raise self._unsupported("session_in_progress")
 
     @property
-    def feed_url(self) -> Optional[str]:
+    def feed_url(self) -> str | None:
         """macOS-only：``feedURL``。WinSparkle 无 getter（仅在 init 前静态设置）。"""
         raise self._unsupported("feed_url")
 

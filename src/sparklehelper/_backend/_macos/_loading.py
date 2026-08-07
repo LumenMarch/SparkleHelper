@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 import sys
 from types import ModuleType
-from typing import Optional
 
 from ...errors import SparkleNotAvailableError
 
@@ -26,10 +25,10 @@ from ...errors import SparkleNotAvailableError
 # 进程级缓存：load_sparkle 成功后写入，后续 get_sparkle 直接返回。
 # ---------------------------------------------------------------------------
 
-_sparkle_module: Optional[ModuleType] = None
+_sparkle_module: ModuleType | None = None
 """已加载的 Sparkle 运行时模块（含 SPUStandardUpdaterController 等类）。"""
 
-_sparkle_path: Optional[str] = None
+_sparkle_path: str | None = None
 """已解析的 framework 磁盘路径，便于诊断与测试。"""
 
 # Sparkle 必需的核心类名。加载后用 lookUpClass 校验它们存在，
@@ -40,7 +39,7 @@ _REQUIRED_CLASSES = (
 )
 
 
-def main_bundle_frameworks_path() -> Optional[str]:
+def main_bundle_frameworks_path() -> str | None:
     """返回主 bundle 内 Sparkle.framework 的路径，无法获取时返回 None。
 
     非 macOS 或未初始化 Cocoa 时 NSBundle 不可用，这里安全降级。
@@ -74,7 +73,7 @@ def main_bundle_frameworks_path() -> Optional[str]:
     return fw_path if os.path.isdir(fw_path) else None
 
 
-def resolve_framework_path(explicit: Optional[str]) -> str:
+def resolve_framework_path(explicit: str | None) -> str:
     """按优先级解析 Sparkle.framework 的磁盘路径。
 
     返回绝对路径字符串。无法解析时抛
@@ -131,7 +130,7 @@ def _verify_classes(module: ModuleType) -> None:
         )
 
 
-def load_sparkle(framework_path: Optional[str] = None) -> ModuleType:
+def load_sparkle(framework_path: str | None = None) -> ModuleType:
     """加载 Sparkle.framework 并返回注册了其符号的模块对象。幂等。
 
     重复调用返回第一次加载的结果（忽略后续的 ``framework_path``）。
@@ -145,7 +144,7 @@ def load_sparkle(framework_path: Optional[str] = None) -> ModuleType:
 
     if sys.platform != "darwin":
         raise SparkleNotAvailableError(
-            "Sparkle is macOS-only (current platform: %s)" % sys.platform
+            f"Sparkle is macOS-only (current platform: {sys.platform})"
         )
 
     # 路径解析不依赖 objc，先做；找不到 framework 时给出清晰指引，
@@ -179,7 +178,7 @@ def is_loaded() -> bool:
     return _sparkle_module is not None
 
 
-def loaded_path() -> Optional[str]:
+def loaded_path() -> str | None:
     """已加载 framework 的磁盘路径；未加载时为 None。"""
     return _sparkle_path
 

@@ -21,7 +21,6 @@ import ast
 import os
 from pathlib import Path
 
-
 PyInstallerTocEntry = tuple[str, str, str]
 PYINSTALLER_WRAPPER_ENV = "SPARKLEHELPER_PYINSTALLER_WRAPPER"
 

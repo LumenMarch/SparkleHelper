@@ -18,8 +18,8 @@ import pytest
 
 import sparklehelper.updater as updater_mod
 from sparklehelper._backend._macos import MacOSBackend, _runtime
-from sparklehelper.updater import Subscription, Updater, ensure_runnable
-
+from sparklehelper.errors import ConfigurationError
+from sparklehelper.updater import Updater, ensure_runnable
 
 # ---------------------------------------------------------------------------
 # 测试用 mock 对象
@@ -173,7 +173,7 @@ def _patch_backend_for_controller(monkeypatch, *, delegate=None):
     fake_class.alloc.return_value = alloc_proxy
 
     sparkle_mod = mock.MagicMock()
-    setattr(sparkle_mod, "SPUStandardUpdaterController", fake_class)
+    sparkle_mod.SPUStandardUpdaterController = fake_class
 
     monkeypatch.setattr(MacOSBackend, "get_sparkle", staticmethod(lambda: sparkle_mod))
 
@@ -217,7 +217,7 @@ def test_constructor_does_not_start_by_default(monkeypatch):
 
 
 def test_constructor_requires_feed_url_in_plist(monkeypatch):
-    with pytest.raises(Exception):  # ConfigurationError
+    with pytest.raises(ConfigurationError, match="SUFeedURL"):
         _make_updater(monkeypatch, plist={"CFBundleVersion": "1"})
 
 

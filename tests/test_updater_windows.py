@@ -6,7 +6,6 @@ from unittest import mock
 
 import pytest
 
-import sparklehelper.updater as updater_mod
 from sparklehelper._backend._windows import _loading
 from sparklehelper.errors import ConfigurationError
 from sparklehelper.updater import Updater, ensure_runnable

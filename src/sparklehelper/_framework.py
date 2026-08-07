@@ -7,15 +7,14 @@ import ast
 import importlib.util
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import TypedDict
-
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _FRAMEWORK_SYMLINK_MANIFEST = _PACKAGE_DIR / "Sparkle.framework.symlinks.json"

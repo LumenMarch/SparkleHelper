@@ -11,8 +11,9 @@ updater 实例状态与 ObjC selector 调用，底层逻辑由同包的
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from ...errors import SparkleNotAvailableError
 from ...types import SystemProfileEntry, from_system_profile
@@ -49,7 +50,7 @@ class MacOSBackend:
         return _loading.is_loaded()
 
     @classmethod
-    def loaded_path(cls) -> Optional[str]:
+    def loaded_path(cls) -> str | None:
         """已加载 framework 的磁盘路径；未加载时为 None。"""
         return _loading.loaded_path()
 
@@ -187,7 +188,7 @@ class MacOSBackend:
         _runtime.assert_main_thread()
         self._updater.resetUpdateCycleAfterShortDelay()
 
-    def clear_feed_url_from_user_defaults(self) -> Optional[str]:
+    def clear_feed_url_from_user_defaults(self) -> str | None:
         """清除此前持久化的 feed URL，返回被清除的值。"""
         _runtime.assert_main_thread()
         url = self._updater.clearFeedURLFromUserDefaults()
@@ -214,7 +215,7 @@ class MacOSBackend:
         return bool(self._updater.sessionInProgress())
 
     @property
-    def feed_url(self) -> Optional[str]:
+    def feed_url(self) -> str | None:
         _runtime.assert_main_thread()
         url = self._updater.feedURL()
         if url is None:
@@ -232,7 +233,7 @@ class MacOSBackend:
         return str(path) if path else ""
 
     @property
-    def last_update_check_date(self) -> Optional[datetime]:
+    def last_update_check_date(self) -> datetime | None:
         _runtime.assert_main_thread()
         date = self._updater.lastUpdateCheckDate()
         if date is None:
@@ -241,7 +242,7 @@ class MacOSBackend:
             ts = float(date.timeIntervalSince1970())
         except (AttributeError, TypeError, ValueError):
             return None
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=UTC)
 
     @property
     def system_profile(self) -> list[SystemProfileEntry]:
@@ -289,7 +290,7 @@ class MacOSBackend:
         self._updater.setUpdateCheckInterval_(float(seconds))
 
     @property
-    def http_headers(self) -> Optional[dict[str, str]]:
+    def http_headers(self) -> dict[str, str] | None:
         _runtime.assert_main_thread()
         headers = self._updater.httpHeaders()
         if headers is None:
@@ -297,7 +298,7 @@ class MacOSBackend:
         return {str(k): str(v) for k, v in headers.items()}
 
     @http_headers.setter
-    def http_headers(self, headers: Optional[dict[str, str]]) -> None:
+    def http_headers(self, headers: dict[str, str] | None) -> None:
         _runtime.assert_main_thread()
         if headers is None:
             self._updater.setHttpHeaders_(None)
@@ -336,7 +337,7 @@ class MacOSBackend:
 
     def observe(
         self, property_name: str, callback: Callable[[Any], None]
-    ) -> "_runtime.Subscription":
+    ) -> _runtime.Subscription:
         """订阅 Sparkle 公开的 KVO 属性。订阅建立后立即回调一次。"""
         _runtime.assert_main_thread()
         try:
@@ -369,7 +370,7 @@ class MacOSBackend:
 
     def observe_can_check_for_updates(
         self, callback: Callable[[bool], None]
-    ) -> "_runtime.Subscription":
+    ) -> _runtime.Subscription:
         """订阅 ``canCheckForUpdates`` 变化（便捷封装）。"""
         return self.observe("can_check_for_updates", callback)
 

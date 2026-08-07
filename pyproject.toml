@@ -39,7 +39,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.16.1",
+]
 demo = [
     "wxPython>=4.2",
     "pyinstaller>=6.21.0",
@@ -70,3 +74,20 @@ where = ["src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra -q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["Sparkle"]  # vendored upstream submodule, not our code
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "UP", "B",
+]
+ignore = ["B008", "E501", "B904"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
