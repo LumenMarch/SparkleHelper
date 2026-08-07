@@ -6,7 +6,8 @@ nil→None、日期/数组转换、缺失字段容错。不依赖真实 Sparkle�
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 
 import pytest
 
@@ -43,7 +44,7 @@ class _FakeAppcastItem:
 
 def test_update_info_is_frozen():
     info = UpdateInfo(version_string="1", display_version_string="1.0", file_url="u")
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises(FrozenInstanceError):
         info.version_string = "2"  # type: ignore[misc]
 
 
@@ -88,7 +89,7 @@ def test_from_appcast_item_full_mapping():
     assert info.minimum_autoupdate_version == "40"
     assert info.channel == "beta"
     assert info.hardware_requirements == ("arm64",)
-    assert info.publication_date == datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
+    assert info.publication_date == datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
     assert info.critical_update is True
     assert info.properties == {"sparkle:custom": "value"}
 

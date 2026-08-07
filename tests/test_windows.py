@@ -20,11 +20,9 @@ from unittest import mock
 
 import pytest
 
-from sparklehelper._backend._windows import WindowsBackend
-from sparklehelper._backend._windows import _bindings, _loading
+from sparklehelper._backend._windows import WindowsBackend, _loading
 from sparklehelper._backend.base import Callbacks, UpdateConfig
 from sparklehelper.errors import SparkleNotAvailableError
-
 
 # ---------------------------------------------------------------------------
 # 跨平台兼容：WINFUNCTYPE 在非 win32 不存在，测试用 CFUNCTYPE 替代。

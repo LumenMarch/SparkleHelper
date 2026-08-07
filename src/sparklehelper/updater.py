@@ -15,8 +15,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ._backend import get_backend
 from ._backend._macos import (
@@ -25,7 +26,6 @@ from ._backend._macos import (
     assert_main_thread,
     bundle_info_plist,
     host_bundle_path,
-    make_delegate_adapter,
 )
 from ._backend.base import UpdateConfig
 from .errors import ConfigurationError
@@ -50,8 +50,8 @@ def _require_bundle_build_version(plist: dict[str, Any]) -> None:
 def ensure_runnable(
     delegate: Any = None,
     *,
-    feed_url: Optional[str] = None,
-    public_key: Optional[str] = None,
+    feed_url: str | None = None,
+    public_key: str | None = None,
 ) -> None:
     """聚合检查：平台、bundle、framework、配置。
 
@@ -132,7 +132,7 @@ class _FeedURLDelegateShim:
         self._delegate = delegate
         self._feed_url = feed_url
 
-    def feed_url_string_for_updater(self) -> Optional[str]:
+    def feed_url_string_for_updater(self) -> str | None:
         """Sparkle 查询 feed URL 时返回显式传入的值。
 
         被包装 delegate 自身实现该方法时不该被 shim 覆盖——构造时由
@@ -199,12 +199,12 @@ class Updater:
         *,
         delegate: Any = None,
         start: bool = False,
-        feed_url: Optional[str] = None,
-        public_key: Optional[str] = None,
-        company: Optional[str] = None,
-        app_name: Optional[str] = None,
-        version: Optional[str] = None,
-        build: Optional[str] = None,
+        feed_url: str | None = None,
+        public_key: str | None = None,
+        company: str | None = None,
+        app_name: str | None = None,
+        version: str | None = None,
+        build: str | None = None,
     ) -> None:
         assert_main_thread()
 
@@ -309,7 +309,7 @@ class Updater:
     # Context manager：自动 cleanup
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "Updater":
+    def __enter__(self) -> Updater:
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -346,7 +346,7 @@ class Updater:
         """短暂延迟后重置自动检查计时，可被后续调用取消。"""
         self._backend.reset_update_cycle_after_short_delay()
 
-    def clear_feed_url_from_user_defaults(self) -> Optional[str]:
+    def clear_feed_url_from_user_defaults(self) -> str | None:
         """清除此前持久化的 feed URL，返回被清除的值。"""
         return self._backend.clear_feed_url_from_user_defaults()
 
@@ -365,7 +365,7 @@ class Updater:
         return self._backend.session_in_progress
 
     @property
-    def feed_url(self) -> Optional[str]:
+    def feed_url(self) -> str | None:
         """当前生效的 appcast feed URL。"""
         return self._backend.feed_url
 
@@ -375,7 +375,7 @@ class Updater:
         return self._backend.host_bundle_path
 
     @property
-    def last_update_check_date(self) -> Optional[datetime]:
+    def last_update_check_date(self) -> datetime | None:
         """上次更新检查时间（UTC aware datetime 或 None）。"""
         return self._backend.last_update_check_date
 
@@ -428,12 +428,12 @@ class Updater:
         self._backend.user_agent_string = value
 
     @property
-    def http_headers(self) -> Optional[dict[str, str]]:
+    def http_headers(self) -> dict[str, str] | None:
         """附加到更新请求的 HTTP 头；None 表示使用 Sparkle 默认值。"""
         return self._backend.http_headers
 
     @http_headers.setter
-    def http_headers(self, headers: Optional[dict[str, str]]) -> None:
+    def http_headers(self, headers: dict[str, str] | None) -> None:
         """设置请求头；传入 None 可清除动态配置。"""
         self._backend.http_headers = headers
 

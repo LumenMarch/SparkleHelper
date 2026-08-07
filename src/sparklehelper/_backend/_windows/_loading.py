@@ -24,7 +24,6 @@ import os
 import platform
 import struct
 import sys
-from typing import Optional
 
 from ...errors import SparkleNotAvailableError
 
@@ -35,7 +34,7 @@ from ...errors import SparkleNotAvailableError
 _winsparkle_dll = None
 """已加载的 WinSparkle.dll 句柄（``ctypes.CDLL``）。"""
 
-_winsparkle_path: Optional[str] = None
+_winsparkle_path: str | None = None
 """已加载 DLL 的磁盘路径，便于诊断与测试。"""
 
 
@@ -64,7 +63,7 @@ def current_arch() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _nuitka_containing_dir() -> Optional[str]:
+def _nuitka_containing_dir() -> str | None:
     """返回 Nuitka 编译产物根目录；普通 Python 运行时返回 None。
 
     Nuitka 将 ``__compiled__`` 注册为 builtin module，必须通过 import 访问。
@@ -81,7 +80,7 @@ def _nuitka_containing_dir() -> Optional[str]:
     return os.fspath(containing_dir)
 
 
-def resolve_winsparkle_path(explicit: Optional[str] = None) -> str:
+def resolve_winsparkle_path(explicit: str | None = None) -> str:
     """按优先级解析 WinSparkle.dll 的磁盘路径。
 
     返回绝对路径字符串。无法解析时抛
@@ -155,7 +154,7 @@ def resolve_winsparkle_path(explicit: Optional[str] = None) -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_winsparkle(dll_path: Optional[str] = None):
+def load_winsparkle(dll_path: str | None = None):
     """加载 WinSparkle.dll 并返回 ``ctypes.CDLL`` 句柄。幂等。
 
     重复调用返回第一次加载的结果（忽略后续的 ``dll_path``）。
@@ -169,7 +168,7 @@ def load_winsparkle(dll_path: Optional[str] = None):
 
     if sys.platform != "win32":
         raise SparkleNotAvailableError(
-            "WinSparkle is Windows-only (current platform: %s)" % sys.platform
+            f"WinSparkle is Windows-only (current platform: {sys.platform})"
         )
 
     path = resolve_winsparkle_path(dll_path)
@@ -195,7 +194,7 @@ def is_loaded() -> bool:
     return _winsparkle_dll is not None
 
 
-def loaded_path() -> Optional[str]:
+def loaded_path() -> str | None:
     """已加载 DLL 的磁盘路径；未加载时为 None。"""
     return _winsparkle_path
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 import sys
 
 from ..errors import SparkleNotAvailableError
-
 from .base import (
     Callbacks,
     SparkleExtras,

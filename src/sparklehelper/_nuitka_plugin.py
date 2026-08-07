@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import plistlib
+from pathlib import Path
 
 from nuitka.plugins.PluginBase import NuitkaPluginBase
 
@@ -30,11 +30,11 @@ def _restore_framework_links(framework_path: str) -> None:
 
 def _bundle_info_plist_path() -> Path:
     """返回 Nuitka 生成中的 macOS bundle Info.plist 路径。"""
+    from nuitka.options.Options import isStandaloneMode
     from nuitka.OutputDirectories import (
         getResultRunFilename,
         getStandaloneDirectoryPath,
     )
-    from nuitka.options.Options import isStandaloneMode
 
     if isStandaloneMode():
         bundle_dir = os.path.dirname(
@@ -97,8 +97,8 @@ def _patch_info_plist(plist_path: Path) -> None:
 
 
 def _patch_plist_creator() -> None:
-    from nuitka.freezer import MacOSApp
     import nuitka.PostProcessing as PostProcessing
+    from nuitka.freezer import MacOSApp
 
     original = MacOSApp.createPlistInfoFile
     if getattr(original, "_sparklehelper_plist_wrapped", False):

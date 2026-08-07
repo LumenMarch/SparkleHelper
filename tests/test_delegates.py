@@ -6,11 +6,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from sparklehelper._backend._macos import _delegates as delegates
 from sparklehelper._backend._macos._delegates import (
-    UpdaterDelegate,
     _has,
     make_delegate_adapter,
 )

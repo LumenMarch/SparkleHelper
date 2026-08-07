@@ -15,7 +15,6 @@ import pytest
 from sparklehelper._backend._macos import MacOSBackend, _loading
 from sparklehelper.errors import SparkleNotAvailableError
 
-
 # ---------------------------------------------------------------------------
 # 平台检查
 # ---------------------------------------------------------------------------

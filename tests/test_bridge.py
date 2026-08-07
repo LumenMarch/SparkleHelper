@@ -14,7 +14,6 @@ import pytest
 from sparklehelper._backend._macos import _runtime
 from sparklehelper.errors import NotABundleError, WrongThreadError
 
-
 # ---------------------------------------------------------------------------
 # 主线程断言
 # ---------------------------------------------------------------------------

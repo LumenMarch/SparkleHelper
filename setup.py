@@ -10,7 +10,6 @@ from pathlib import Path
 from setuptools import setup
 from setuptools.command.bdist_wheel import bdist_wheel
 
-
 _PACKAGE_DIR = Path(__file__).parent / "src" / "sparklehelper"
 _FRAMEWORK_DIR = _PACKAGE_DIR / "Sparkle.framework"
 _FRAMEWORK_SYMLINK_MANIFEST = _PACKAGE_DIR / "Sparkle.framework.symlinks.json"
