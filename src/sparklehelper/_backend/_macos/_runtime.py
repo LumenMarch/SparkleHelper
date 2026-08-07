@@ -13,7 +13,8 @@ import logging
 import os
 import sys
 import threading
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ...errors import NotABundleError, WrongThreadError
 
@@ -101,7 +102,7 @@ def host_bundle_path() -> str:
     return real
 
 
-def _find_app_ancestor(path: str) -> Optional[str]:
+def _find_app_ancestor(path: str) -> str | None:
     """从 path 向上查找 ``*.app`` 路径段，找不到返回 None。
 
     仅按路径结构判断（``.app`` 后缀），不查文件系统：Sparkle 信任
@@ -239,7 +240,7 @@ class Subscription:
             pass
         self._observer = None
 
-    def __enter__(self) -> "Subscription":
+    def __enter__(self) -> Subscription:
         return self
 
     def __exit__(self, *exc: Any) -> None:

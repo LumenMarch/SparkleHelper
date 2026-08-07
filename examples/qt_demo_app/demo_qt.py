@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import sys
 
-
 FEED_URL = "https://example.com/appcast.xml"
 PUBLIC_KEY = "YOUR_EDDSA_PUBLIC_KEY_BASE64"
 
@@ -39,6 +38,7 @@ def main() -> int:
             QVBoxLayout,
             QWidget,
         )
+
         from sparklehelper import Updater
 
         class UpdateBridge(QObject):

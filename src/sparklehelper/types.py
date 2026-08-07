@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import IntEnum
-from typing import Any, Optional
+from typing import Any
 
 
 class UpdateCheckKind(IntEnum):
@@ -47,27 +47,27 @@ class UpdateInfo:
     display_version_string: str
     """展示版本号，对应 ``CFBundleShortVersionString``。"""
 
-    file_url: Optional[str] = None
+    file_url: str | None = None
     """更新包下载地址；信息类更新可能没有下载地址。"""
 
     content_length: int = 0
     """更新包字节数；feed 未提供时为 0。"""
 
-    info_url: Optional[str] = None
+    info_url: str | None = None
     information_only: bool = False
-    title: Optional[str] = None
-    publication_date: Optional[datetime] = None
-    release_notes_url: Optional[str] = None
-    full_release_notes_url: Optional[str] = None
-    minimum_system_version: Optional[str] = None
-    minimum_update_version: Optional[str] = None
-    maximum_system_version: Optional[str] = None
+    title: str | None = None
+    publication_date: datetime | None = None
+    release_notes_url: str | None = None
+    full_release_notes_url: str | None = None
+    minimum_system_version: str | None = None
+    minimum_update_version: str | None = None
+    maximum_system_version: str | None = None
     hardware_requirements: tuple[str, ...] = ()
-    channel: Optional[str] = None
-    installation_type: Optional[str] = None
-    minimum_autoupdate_version: Optional[str] = None
+    channel: str | None = None
+    installation_type: str | None = None
+    minimum_autoupdate_version: str | None = None
     critical_update: bool = False
-    os_string: Optional[str] = None
+    os_string: str | None = None
     properties: dict[str, Any] = field(default_factory=dict)
     """Sparkle 的 ``propertiesDictionary``，包含自定义 appcast 扩展。"""
 
@@ -95,7 +95,7 @@ class UpdateCheckResult:
     """一次更新检查的 Python 结果。"""
 
     found: bool
-    latest: Optional[UpdateInfo] = None
+    latest: UpdateInfo | None = None
     skipped: bool = False
 
 
@@ -110,7 +110,7 @@ def _objc_value(obj: Any, name: str) -> Any:
     return value
 
 
-def _nsstring_to_str(value: Any) -> Optional[str]:
+def _nsstring_to_str(value: Any) -> str | None:
     """NSString/Python str → str；nil/None → None。"""
     if value is None:
         return None
@@ -118,7 +118,7 @@ def _nsstring_to_str(value: Any) -> Optional[str]:
     return result or None
 
 
-def _nsurl_to_str(value: Any) -> Optional[str]:
+def _nsurl_to_str(value: Any) -> str | None:
     """NSURL/Python str → str；nil/None → None。"""
     if value is None:
         return None
@@ -130,7 +130,7 @@ def _nsurl_to_str(value: Any) -> Optional[str]:
     return None
 
 
-def _nsdate_to_datetime(value: Any) -> Optional[datetime]:
+def _nsdate_to_datetime(value: Any) -> datetime | None:
     """NSDate → UTC aware datetime；nil/None → None。"""
     if value is None:
         return None
@@ -138,7 +138,7 @@ def _nsdate_to_datetime(value: Any) -> Optional[datetime]:
         timestamp = float(value.timeIntervalSince1970())
     except (AttributeError, TypeError, ValueError):
         return None
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    return datetime.fromtimestamp(timestamp, tz=UTC)
 
 
 def _collection_to_tuple_str(value: Any) -> tuple[str, ...]:
@@ -226,7 +226,8 @@ def from_system_profile(entries: Any) -> list[SystemProfileEntry]:
         if isinstance(entry, Mapping):
             value_for = entry.get
         else:
-            value_for = lambda key, default=None: _objc_value(entry, key)
+            def value_for(key, default=None, entry=entry):
+                return _objc_value(entry, key)
         result.append(
             SystemProfileEntry(
                 key=_nsstring_to_str(value_for("key")) or "",

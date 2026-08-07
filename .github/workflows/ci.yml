@@ -59,6 +59,11 @@ jobs:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv sync --locked --extra dev
 
+      - name: Lint with ruff
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: uv run ruff check .
+
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}

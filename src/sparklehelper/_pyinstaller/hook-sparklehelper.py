@@ -42,8 +42,8 @@ PyInstaller 6.x 通过 ``pyinstaller40`` entry point (``hook-dirs``) 自动加�
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 hiddenimports = ["sparklehelper"]
 
@@ -89,6 +89,7 @@ def _collect_sparkle_framework(hook_api):
 def _current_spec_uses_onefile_bundle() -> bool:
     try:
         from PyInstaller.config import CONF
+
         from sparklehelper._pyinstaller import spec_uses_onefile_bundle
 
         spec = CONF.get("spec")

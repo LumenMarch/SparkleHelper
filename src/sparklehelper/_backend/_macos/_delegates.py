@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Protocol, Union, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ...types import (
     UpdateCheckKind,
@@ -20,7 +20,7 @@ from ...types import (
 )
 from . import _loading
 
-Decision = Union[bool, str]
+Decision = bool | str
 """True 表示允许，False 或错误消息字符串表示拒绝。"""
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class UpdaterDelegate(Protocol):
         self, *, update_check: UpdateCheckKind
     ) -> Decision: ...
 
-    def feed_url_string_for_updater(self) -> Optional[str]: ...
+    def feed_url_string_for_updater(self) -> str | None: ...
 
     def allowed_channels_for_updater(self) -> tuple[str, ...]: ...
 
@@ -88,7 +88,7 @@ class UpdaterDelegate(Protocol):
 
     def allowed_system_profile_keys_for_updater(
         self,
-    ) -> Optional[tuple[str, ...]]: ...
+    ) -> tuple[str, ...] | None: ...
 
     def updater_did_find_valid_update(self, *, update: UpdateInfo) -> None: ...
 
@@ -132,7 +132,7 @@ class UpdaterDelegate(Protocol):
 
     def updater_will_not_schedule_update_check(self) -> None: ...
 
-    def decryption_password_for_updater(self) -> Optional[str]: ...
+    def decryption_password_for_updater(self) -> str | None: ...
 
     def updater_did_abort(self, *, error: Exception) -> None: ...
 
@@ -141,7 +141,7 @@ class UpdaterDelegate(Protocol):
         *,
         update_check: UpdateCheckKind,
         found_update: bool,
-        error: Optional[Exception],
+        error: Exception | None,
     ) -> None: ...
 
 
@@ -181,7 +181,7 @@ def _invoke(
         return default
 
 
-def _to_exception(error: Any) -> Optional[Exception]:
+def _to_exception(error: Any) -> Exception | None:
     """NSError/Exception → Python Exception。"""
     if error is None:
         return None
@@ -193,11 +193,11 @@ def _to_exception(error: Any) -> Optional[Exception]:
     return Exception(str(error))
 
 
-def _to_nserror(message: Optional[str]) -> Any:
+def _to_nserror(message: str | None) -> Any:
     """Python 拒绝原因字符串 → NSError，供 error: out-parameter 使用。"""
     if message is None:
         return None
-    from Foundation import NSLocalizedDescriptionKey, NSError
+    from Foundation import NSError, NSLocalizedDescriptionKey
 
     return NSError.errorWithDomain_code_userInfo_(
         "sparklehelper",
@@ -220,7 +220,7 @@ def _user_update_choice(value: Any) -> UserUpdateChoice:
         return UserUpdateChoice.DISMISS
 
 
-def _decision(value: Any, default_message: str) -> tuple[bool, Optional[str]]:
+def _decision(value: Any, default_message: str) -> tuple[bool, str | None]:
     if isinstance(value, str):
         return False, value or default_message
     allowed = bool(value)
@@ -255,7 +255,7 @@ class _DelegateMethods:
             return None
         return _invoke(self._py_delegate, method_name, update=from_appcast_item(item))
 
-    def feedURLStringForUpdater_(self, updater) -> Optional[str]:  # noqa: N802
+    def feedURLStringForUpdater_(self, updater) -> str | None:  # noqa: N802
         return _invoke(self._py_delegate, "feed_url_string_for_updater", default=None)
 
     def updater_didFindValidUpdate_(self, updater, item) -> None:  # noqa: N802
@@ -358,7 +358,7 @@ class _PythonDelegateStub(_DelegateMethods):
 
     def updater_mayPerformUpdateCheck_error_(  # noqa: N802
         self, updater, update_check, error
-    ) -> tuple[bool, Optional[Exception]]:
+    ) -> tuple[bool, Exception | None]:
         value = _invoke(
             self._py_delegate,
             "updater_may_perform_update_check",
@@ -402,7 +402,7 @@ class _PythonDelegateStub(_DelegateMethods):
 
     def updater_shouldProceedWithUpdate_updateCheck_error_(  # noqa: N802
         self, updater, item, update_check, error
-    ) -> tuple[bool, Optional[Exception]]:
+    ) -> tuple[bool, Exception | None]:
         value = _invoke(
             self._py_delegate,
             "updater_should_proceed_with_update",
@@ -430,7 +430,7 @@ class _PythonDelegateStub(_DelegateMethods):
             _invoke(self._py_delegate, "updater_should_relaunch_application", default=True)
         )
 
-    def decryptionPasswordForUpdater_(self, updater) -> Optional[str]:  # noqa: N802
+    def decryptionPasswordForUpdater_(self, updater) -> str | None:  # noqa: N802
         return _invoke(self._py_delegate, "decryption_password_for_updater", default=None)
 
 
@@ -449,8 +449,8 @@ def _get_adapter_class() -> Any:
     from Foundation import (  # noqa: F401
         NSArray,
         NSDictionary,
-        NSSet,
         NSObject,
+        NSSet,
     )
 
     protocol = objc.protocolNamed("SPUUpdaterDelegate")
@@ -624,14 +624,14 @@ def _get_adapter_class() -> Any:
                 _invoke(self._py_delegate, "updater_should_relaunch_application", default=True)
             )
 
-        def decryptionPasswordForUpdater_(self, updater) -> Optional[str]:  # noqa: N802
+        def decryptionPasswordForUpdater_(self, updater) -> str | None:  # noqa: N802
             return _invoke(self._py_delegate, "decryption_password_for_updater", default=None)
 
     _delegate_adapter_cls = _DelegateAdapter
     return _delegate_adapter_cls
 
 
-def make_delegate_adapter(delegate: Optional[UpdaterDelegate]) -> Any:
+def make_delegate_adapter(delegate: UpdaterDelegate | None) -> Any:
     """把用户 delegate 包装成 ObjC ``SPUUpdaterDelegate``。
 
     Sparkle 未加载（非 darwin / 测试环境）时降级返回

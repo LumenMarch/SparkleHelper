@@ -47,10 +47,10 @@ http_headers    httpHeaders                        set_http_header /
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Optional, Protocol, runtime_checkable
-
+from typing import Any, Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # 配置数据载体（平台无关）
@@ -79,19 +79,19 @@ class UpdateConfig:
     feed_url: str
     """appcast feed URL。HTTPS 强烈推荐。"""
 
-    public_key: Optional[str] = None
+    public_key: str | None = None
     """EdDSA 公钥（base64）。None 表示使用框架内置来源（Info.plist / exe 资源）。"""
 
-    company: Optional[str] = None
+    company: str | None = None
     """厂商名。macOS 可选；Windows 用于确定 registry 存储位置。"""
 
-    app_name: Optional[str] = None
+    app_name: str | None = None
     """应用名，同时用于 User-Agent。"""
 
-    version: Optional[str] = None
+    version: str | None = None
     """展示版本号。"""
 
-    build: Optional[str] = None
+    build: str | None = None
     """构建版本号（用于版本比较）。"""
 
     http_headers: dict[str, str] = field(default_factory=dict)
@@ -123,28 +123,28 @@ class Callbacks:
     （macOS 无），故不进此集合，由 ``WinSparkleExtras`` 暴露。
     """
 
-    on_error: Optional[Callable[[], None]] = None
+    on_error: Callable[[], None] | None = None
     """更新流程发生错误时调用。
 
     macOS: ``delegate.updater_didAbortWithError_``
     Windows: ``win_sparkle_set_error_callback``
     """
 
-    on_update_found: Optional[Callable[[], None]] = None
+    on_update_found: Callable[[], None] | None = None
     """发现有效更新时调用。
 
     macOS: ``delegate.updater_didFindValidUpdate_``
     Windows: ``win_sparkle_set_did_find_update_callback``
     """
 
-    on_no_update: Optional[Callable[[], None]] = None
+    on_no_update: Callable[[], None] | None = None
     """未发现更新时调用。
 
     macOS: ``delegate.updater_didNotFindUpdate_``
     Windows: ``win_sparkle_set_did_not_find_update_callback``
     """
 
-    on_cancelled: Optional[Callable[[], None]] = None
+    on_cancelled: Callable[[], None] | None = None
     """用户取消更新时调用。
 
     macOS: ``delegate.userDidCancelDownload_``
@@ -262,7 +262,7 @@ class UpdateBackend(Protocol):
     # -- 只读状态 --------------------------------------------------------
 
     @property
-    def last_update_check_date(self) -> Optional[datetime]:
+    def last_update_check_date(self) -> datetime | None:
         """上次更新检查时间（UTC aware），未检查过为 None。
 
         - macOS：``lastUpdateCheckDate`` (NSDate) → datetime。
@@ -271,12 +271,12 @@ class UpdateBackend(Protocol):
         ...
 
     @property
-    def http_headers(self) -> Optional[dict[str, str]]:
+    def http_headers(self) -> dict[str, str] | None:
         """当前生效的附加 HTTP 头；None 表示使用框架默认。"""
         ...
 
     @http_headers.setter
-    def http_headers(self, headers: Optional[dict[str, str]]) -> None:
+    def http_headers(self, headers: dict[str, str] | None) -> None:
         """设置请求头；传入 None 清除。"""
         ...
 
