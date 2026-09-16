@@ -69,7 +69,7 @@ _WINSPARKLE = {
     },
     "extract": {
         "WinSparkle-{version}/x64/Release/WinSparkle.dll": "winsparkle/x64/WinSparkle.dll",
-        "WinSparkle-{version}/Release/WinSparkle.dll": "winsparkle/x86/WinSparkle.dll",
+        "WinSparkle-{version}/Win32/Release/WinSparkle.dll": "winsparkle/x86/WinSparkle.dll",
         "WinSparkle-{version}/ARM64/Release/WinSparkle.dll": "winsparkle/arm64/WinSparkle.dll",
     },
     "tool": {
