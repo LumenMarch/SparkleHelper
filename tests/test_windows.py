@@ -543,6 +543,113 @@ def test_set_registry_path(monkeypatch):
     )
 
 
+def test_can_shutdown_callback_bool_to_int(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+    backend.set_can_shutdown_callback(lambda: True)
+
+    wrapped = dll.win_sparkle_set_can_shutdown_callback.call_args[0][0]
+    assert wrapped() == 1
+    assert len(backend._callbacks_holder) == 1
+
+    backend.set_can_shutdown_callback(lambda: False)
+    wrapped = dll.win_sparkle_set_can_shutdown_callback.call_args[0][0]
+    assert wrapped() == 0
+
+
+def test_can_shutdown_callback_exception_denies(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+
+    def boom():
+        raise RuntimeError("busy")
+
+    backend.set_can_shutdown_callback(boom)
+    wrapped = dll.win_sparkle_set_can_shutdown_callback.call_args[0][0]
+    assert wrapped() == 0
+
+
+def test_shutdown_request_callback_invoked(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+    seen: list[str] = []
+    backend.set_shutdown_request_callback(lambda: seen.append("quit"))
+
+    wrapped = dll.win_sparkle_set_shutdown_request_callback.call_args[0][0]
+    wrapped()
+    assert seen == ["quit"]
+
+
+def test_user_run_installer_callback_return_codes(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+    paths: list[str] = []
+
+    def take_over(path: str) -> int:
+        paths.append(path)
+        return 1
+
+    backend.set_user_run_installer_callback(take_over)
+    wrapped = dll.win_sparkle_set_user_run_installer_callback.call_args[0][0]
+    assert wrapped("C:\\setup.exe") == 1
+    assert paths == ["C:\\setup.exe"]
+
+    backend.set_user_run_installer_callback(lambda path: False)
+    wrapped = dll.win_sparkle_set_user_run_installer_callback.call_args[0][0]
+    assert wrapped("C:\\setup.exe") == 0
+
+
+def test_user_run_installer_callback_exception_is_error(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+
+    def boom(path: str) -> int:
+        raise RuntimeError("fail")
+
+    backend.set_user_run_installer_callback(boom)
+    wrapped = dll.win_sparkle_set_user_run_installer_callback.call_args[0][0]
+    assert wrapped("C:\\setup.exe") == -1
+
+
+def test_extras_none_clears_callback(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+    backend.set_can_shutdown_callback(None)
+    dll.win_sparkle_set_can_shutdown_callback.assert_called_with(None)
+    backend.set_shutdown_request_callback(None)
+    dll.win_sparkle_set_shutdown_request_callback.assert_called_with(None)
+    backend.set_user_run_installer_callback(None)
+    dll.win_sparkle_set_user_run_installer_callback.assert_called_with(None)
+
+
+def test_extras_must_be_before_start(monkeypatch):
+    dll = _make_mock_dll()
+    _patch_load_with_mock(monkeypatch, dll)
+    backend = WindowsBackend()
+    backend.configure(UpdateConfig(feed_url="u"))
+    backend.start()
+    with pytest.raises(RuntimeError, match="start"):
+        backend.set_registry_path("Software\\MyApp\\Updates")
+    with pytest.raises(RuntimeError, match="start"):
+        backend.set_can_shutdown_callback(lambda: True)
+    with pytest.raises(RuntimeError, match="start"):
+        backend.set_shutdown_request_callback(lambda: None)
+    with pytest.raises(RuntimeError, match="start"):
+        backend.set_user_run_installer_callback(lambda path: 0)
+
+
 # ---------------------------------------------------------------------------
 # macOS-only 成员：WinSparkle 无对应物 → 明确 AttributeError（非裸 AttributeError）
 # ---------------------------------------------------------------------------

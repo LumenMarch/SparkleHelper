@@ -18,7 +18,8 @@ WinSparkle 全部导出都是 ``__cdecl``，对应 ``ctypes.CDLL`` 与
 - ``time_t`` → 按进程位数：64 位进程 ``c_int64``，32 位 ``c_int32``。
   Windows 是 LLP64：64 位上 C ``long`` 仍是 32 位，而 ``time_t`` 是 64 位，
   故不能用 ``c_long``（见 :func:`_time_t_type`）。
-- 回调全部是 ``void (__cdecl *)()``（无参无返回，含 can_shutdown 返回 int）
+- 回调默认 ``void (__cdecl *)()``；``can_shutdown`` 为 ``int ()``；
+  ``user_run_installer`` 为 ``int (const wchar_t *)``
 
 注意：``win_sparkle_set_app_details`` 的 3 个参数都是 ``wchar_t*``，
 而 ``win_sparkle_set_appcast_url`` 是 ``char*``（UTF-8）——这是 WinSparkle
@@ -37,6 +38,10 @@ import struct
 # 回调类型（进程级缓存，惰性创建；非 win32 上 _setup 被调用前为 None）。
 _callback_type = None
 _can_shutdown_callback_type = None
+_user_run_installer_callback_type = None
+
+# winsparkle.h WINSPARKLE_RETURN_ERROR：user_run_installer 用 -1 表示出错。
+WINSPARKLE_RETURN_ERROR = -1
 
 
 def get_callback_type():
@@ -57,6 +62,18 @@ def get_can_shutdown_callback_type():
 
         _can_shutdown_callback_type = ctypes.CFUNCTYPE(ctypes.c_int)
     return _can_shutdown_callback_type
+
+
+def get_user_run_installer_callback_type():
+    """``int (__cdecl *)(const wchar_t *)`` 回调类型（惰性缓存）。"""
+    global _user_run_installer_callback_type
+    if _user_run_installer_callback_type is None:
+        import ctypes
+
+        _user_run_installer_callback_type = ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_wchar_p
+        )
+    return _user_run_installer_callback_type
 
 
 def _time_t_type():
@@ -83,6 +100,7 @@ def _setup(dll) -> None:
 
     callback_t = get_callback_type()
     can_shutdown_t = get_can_shutdown_callback_type()
+    user_run_installer_t = get_user_run_installer_callback_type()
 
     # -- 配置（必须在 init 前调用）-------------------------------------
 
@@ -164,18 +182,22 @@ def _setup(dll) -> None:
     dll.win_sparkle_set_update_cancelled_callback.restype = None
     dll.win_sparkle_set_update_cancelled_callback.argtypes = [callback_t]
 
-    # WinSparkle 独有回调（can_shutdown / shutdown_request / skipped /
-    # postponed / dismissed / user_run_installer）当前未通过 Callbacks 暴露，
-    # 仅设置类型签名以便后续按需扩展。
+    # WinSparkle 独有回调经 WinSparkleExtras 暴露，不进跨平台 Callbacks。
+    # skipped / postponed / dismissed 仍未接线。
     dll.win_sparkle_set_can_shutdown_callback.restype = None
     dll.win_sparkle_set_can_shutdown_callback.argtypes = [can_shutdown_t]
 
     dll.win_sparkle_set_shutdown_request_callback.restype = None
     dll.win_sparkle_set_shutdown_request_callback.argtypes = [callback_t]
 
+    dll.win_sparkle_set_user_run_installer_callback.restype = None
+    dll.win_sparkle_set_user_run_installer_callback.argtypes = [user_run_installer_t]
+
 
 __all__ = [
+    "WINSPARKLE_RETURN_ERROR",
     "_setup",
     "get_callback_type",
     "get_can_shutdown_callback_type",
+    "get_user_run_installer_callback_type",
 ]

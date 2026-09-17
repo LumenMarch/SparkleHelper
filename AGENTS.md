@@ -234,7 +234,7 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 
 - **`feed_url` 必填**：Windows 分支下必须显式提供，否则报错。
 - **`cleanup` 必须调用**：`win_sparkle_cleanup()` 取消后台线程，退出前必须调用；`Updater` 支持 context manager。
-- **`set_registry_path` 须在 `start()` 前调用**（WinSparkleExtras）。
+- **`set_registry_path` / `set_can_shutdown_callback` / `set_shutdown_request_callback` / `set_user_run_installer_callback` 须在 `start()` 前调用**（WinSparkleExtras；`Updater` 转发）。macOS Sparkle 自行杀进程再拉起；Windows 未注册 shutdown 钩子时安装成功只是空操作。这些回调不在主线程。
 - ctypes 用 `CDLL` + `CFUNCTYPE`（`__cdecl`），不能用 `WinDLL`/`WINFUNCTYPE`（32 位栈清理不匹配会崩）。
 - 回调持有：CFUNCTYPE 包装对象存入 `_callbacks_holder` 防 GC——DLL 持原始函数指针，Python 侧必须保活。
 
