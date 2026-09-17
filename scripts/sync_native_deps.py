@@ -32,6 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 #: 仓库根目录（本脚本位于 ``scripts/`` 下）。
@@ -41,6 +42,10 @@ _CACHE_DIR = _REPO_ROOT / "build" / "native-cache"
 
 #: 设为 ``1`` 时禁止联网同步；目标缺失即构建失败。
 SKIP_ENV = "SPARKLEHELPER_SKIP_NATIVE_SYNC"
+#: 可选：钉住上游 release tag（未设则仍解析 ``releases/latest``）。
+SPARKLE_TAG_ENV = "SPARKLEHELPER_SPARKLE_TAG"
+WINSPARKLE_TAG_ENV = "SPARKLEHELPER_WINSPARKLE_TAG"
+PROVENANCE_NAME = "native-provenance.json"
 
 # Sparkle.framework 上游资产（universal2，macOS 11+）。
 _SPARKLE = {
@@ -152,13 +157,69 @@ def _asset_sha256(asset: dict, asset_name: str) -> str:
     )
 
 
-def _latest_release_asset(asset_config: dict) -> dict:
+def _pinned_tag(kind: str) -> str | None:
+    env_name = SPARKLE_TAG_ENV if kind == "sparkle" else WINSPARKLE_TAG_ENV
+    value = os.environ.get(env_name, "").strip()
+    return value or None
+
+
+def _provenance_path() -> Path:
+    return _PACKAGE_DIR / PROVENANCE_NAME
+
+
+def read_provenance() -> dict:
+    """读取包内上游 provenance；缺失或损坏时返回空 dict。"""
+    path = _provenance_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_platform_provenance(kind: str, asset: dict) -> None:
+    data = read_provenance()
+    data[kind] = {
+        "repo": asset.get("repo"),
+        "tag": asset["release"],
+        "archive": asset["archive"],
+        "sha256": asset["sha256"],
+        "resolved_at": datetime.now(UTC).isoformat(),
+    }
+    path = _provenance_path()
+    path.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def _offline_pin_matches(kind: str, pin: str | None) -> None:
+    if pin is None:
+        return
+    record = read_provenance().get(kind)
+    tag = record.get("tag") if isinstance(record, dict) else None
+    if tag != pin:
+        raise NativeSyncError(
+            f"{SKIP_ENV}=1 且已钉住 {kind} tag {pin!r}，"
+            f"但 {PROVENANCE_NAME} 记录为 {tag!r}。"
+        )
+
+
+def _release_asset(asset_config: dict, *, tag: str | None = None) -> dict:
     repo = asset_config["repo"]
-    release = _read_github_json(f"https://api.github.com/repos/{repo}/releases/latest")
+    if tag:
+        quoted = urllib.parse.quote(tag, safe="")
+        url = f"https://api.github.com/repos/{repo}/releases/tags/{quoted}"
+        label = f"tag {tag}"
+    else:
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        label = "latest"
+    release = _read_github_json(url)
     pattern = re.compile(asset_config["asset_pattern"])
     assets = release.get("assets")
     if not isinstance(assets, list):
-        raise NativeSyncError(f"GitHub latest release 缺少 assets: {repo}")
+        raise NativeSyncError(f"GitHub {label} release 缺少 assets: {repo}")
 
     for asset in assets:
         if not isinstance(asset, dict):
@@ -169,16 +230,17 @@ def _latest_release_asset(asset_config: dict) -> dict:
         match = pattern.match(name)
         if match is None:
             continue
-        url = asset.get("browser_download_url")
-        if not isinstance(url, str):
+        download_url = asset.get("browser_download_url")
+        if not isinstance(download_url, str):
             raise NativeSyncError(f"GitHub release asset 缺少下载地址: {name}")
         tag_name = release.get("tag_name")
         if not isinstance(tag_name, str) or not tag_name:
-            raise NativeSyncError(f"GitHub latest release 缺少 tag_name: {repo}")
+            raise NativeSyncError(f"GitHub {label} release 缺少 tag_name: {repo}")
         return {
+            "repo": repo,
             "version": match.group("version"),
             "archive": name,
-            "url": url,
+            "url": download_url,
             "sha256": _asset_sha256(asset, name),
             "release": tag_name,
         }
@@ -189,7 +251,7 @@ def _latest_release_asset(asset_config: dict) -> dict:
         if isinstance(asset, dict)
     )
     raise NativeSyncError(
-        f"GitHub latest release 未找到匹配资产: {repo}\n"
+        f"GitHub {label} release 未找到匹配资产: {repo}\n"
         f"  pattern: {asset_config['asset_pattern']}\n"
         f"  assets: {available}"
     )
@@ -268,6 +330,83 @@ def _framework_valid() -> bool:
     )
 
 
+def _normalize_archive_name(name: str) -> str:
+    return name[2:] if name.startswith("./") else name
+
+
+def _archive_preview(names: list[str], *, limit: int = 30) -> str:
+    shown = sorted(names)[:limit]
+    extra = len(names) - len(shown)
+    text = ", ".join(shown) if shown else "(empty)"
+    if extra > 0:
+        text += f", ... ({extra} more)"
+    return text
+
+
+def _best_named_candidate(preferred: str, candidates: list[str]) -> str:
+    markers = [
+        token
+        for token in ("Win32", "x64", "ARM64", "Release", "bin")
+        if token in preferred
+    ]
+
+    def score(name: str) -> tuple[int, int]:
+        return sum(token in name for token in markers), -len(name)
+
+    return sorted(candidates, key=score, reverse=True)[0]
+
+
+def resolve_named_member(names: list[str], preferred: str) -> str:
+    """先精确路径，再按 basename 搜；失败时列出 archive 成员。"""
+    normalized = [_normalize_archive_name(name) for name in names]
+    if preferred in normalized:
+        return preferred
+    base = preferred.rstrip("/").rsplit("/", 1)[-1]
+    candidates = [
+        name
+        for name in normalized
+        if not name.endswith("/") and name.rstrip("/").rsplit("/", 1)[-1] == base
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        return _best_named_candidate(preferred, candidates)
+    raise NativeSyncError(
+        f"archive 内未找到 {preferred}（basename {base}）。\n"
+        f"  已尝试: {preferred}\n"
+        f"  成员预览: {_archive_preview(normalized)}"
+    )
+
+
+def resolve_framework_prefix(names: list[str], preferred: str) -> str:
+    """定位 ``Sparkle.framework`` 根；优先含 ``Versions/`` 的目录。"""
+    normalized = [_normalize_archive_name(name) for name in names]
+    if any(
+        name == preferred or name.startswith(preferred + "/") for name in normalized
+    ):
+        return preferred
+    found: set[str] = set()
+    for name in normalized:
+        parts = name.split("/")
+        if "Sparkle.framework" in parts:
+            index = parts.index("Sparkle.framework")
+            found.add("/".join(parts[: index + 1]))
+    if len(found) == 1:
+        return next(iter(found))
+    with_versions = [
+        prefix
+        for prefix in found
+        if any(name.startswith(prefix + "/Versions/") for name in normalized)
+    ]
+    if len(with_versions) == 1:
+        return with_versions[0]
+    raise NativeSyncError(
+        f"tarball 内未找到 {preferred}/，上游资产结构可能已变化。\n"
+        f"  已尝试: {preferred}\n"
+        f"  成员预览: {_archive_preview(normalized)}"
+    )
+
+
 def _extract_framework_subset(
     tar: tarfile.TarFile, dest: Path, extract_root: str
 ) -> None:
@@ -275,10 +414,11 @@ def _extract_framework_subset(
 
     手动遍历 member 而非 ``extractall``：精确只取 framework 子树、还原符号
     链接（``os.symlink``）、保留普通文件可执行位（``os.chmod``），并对未预期
-    member 类型显式报错，避免静默丢数据。member 路径（含 ``Sparkle.framework/``
-    前缀）原样落到 dest 下。
+    member 类型显式报错，避免静默丢数据。member 路径落到 dest 下时去掉
+    解析到的 framework 前缀的父路径，使目标始终是 ``dest/Sparkle.framework``。
     """
-    prefix = extract_root
+    member_names = [member.name for member in tar.getmembers()]
+    prefix = resolve_framework_prefix(member_names, extract_root)
     dest.mkdir(parents=True, exist_ok=True)
     extracted_any = False
     for member in tar.getmembers():
@@ -286,7 +426,8 @@ def _extract_framework_subset(
         if name != prefix and not name.startswith(prefix + "/"):
             continue
         extracted_any = True
-        target = dest / name
+        relative = name[len(prefix):].lstrip("/")
+        target = dest / extract_root / relative if relative else dest / extract_root
         if member.issym():
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists() or target.is_symlink():
@@ -318,12 +459,13 @@ def _extract_tar_files(
     paths: dict[str, str],
 ) -> None:
     """从 tarball 提取指定普通文件，并保留可执行位。"""
-    remaining = dict(paths)
-    for member in tar.getmembers():
-        name = member.name[2:] if member.name.startswith("./") else member.name
-        target_name = remaining.get(name)
-        if target_name is None:
-            continue
+    members = {
+        _normalize_archive_name(member.name): member for member in tar.getmembers()
+    }
+    names = list(members)
+    for preferred, target_name in paths.items():
+        resolved = resolve_named_member(names, preferred)
+        member = members[resolved]
         if not member.isreg():
             raise NativeSyncError(f"tarball 成员不是普通文件: {member.name}")
         source = tar.extractfile(member)
@@ -334,12 +476,6 @@ def _extract_tar_files(
         with source, target.open("wb") as out:
             shutil.copyfileobj(source, out)
         os.chmod(target, member.mode)
-        remaining.pop(name)
-
-    if remaining:
-        raise NativeSyncError(
-            f"tarball 内缺少发布工具，上游资产结构可能已变化: {sorted(remaining)}"
-        )
 
 
 def _sparkle_tool_target_paths() -> list[Path]:
@@ -349,6 +485,7 @@ def _sparkle_tool_target_paths() -> list[Path]:
 def sync_sparkle_framework() -> None:
     """准备 macOS ``Sparkle.framework`` 与发布工具。"""
     target = _framework_target()
+    pin = _pinned_tag("sparkle")
     if _skip_sync_enabled():
         tool_targets = _sparkle_tool_target_paths()
         if (
@@ -356,6 +493,7 @@ def sync_sparkle_framework() -> None:
             and all(path.is_file() and path.stat().st_size > 0 for path in tool_targets)
             and _license_valid(_SPARKLE)
         ):
+            _offline_pin_matches("sparkle", pin)
             return
         missing = [str(target)] if not _framework_valid() else []
         missing.extend(str(path) for path in tool_targets if not path.is_file())
@@ -367,7 +505,7 @@ def sync_sparkle_framework() -> None:
             "或取消该环境变量让构建联网同步。"
         )
 
-    asset = _latest_release_asset(_SPARKLE)
+    asset = _release_asset(_SPARKLE, tag=pin)
     archive = _ensure_archive(asset)
     extract_root = _CACHE_DIR / f"sparkle-{asset['version']}"
     if extract_root.exists():
@@ -389,6 +527,7 @@ def sync_sparkle_framework() -> None:
         target_tool.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_tool, target_tool)
     _sync_license(_SPARKLE, asset["release"])
+    _write_platform_provenance("sparkle", asset)
 
 
 def _winsparkle_extract_paths(version: str) -> dict[str, str]:
@@ -414,6 +553,7 @@ def _include_winsparkle_tool() -> bool:
 
 def sync_winsparkle() -> None:
     """准备 Windows 三架构 DLL，并按构建架构准备发布工具。"""
+    pin = _pinned_tag("winsparkle")
     if _skip_sync_enabled():
         targets = _winsparkle_target_paths()
         if _include_winsparkle_tool():
@@ -422,6 +562,7 @@ def sync_winsparkle() -> None:
             all(path.is_file() and path.stat().st_size > 0 for path in targets)
             and _license_valid(_WINSPARKLE)
         ):
+            _offline_pin_matches("winsparkle", pin)
             return
         missing = [str(p) for p in targets if not p.is_file()]
         if not _license_valid(_WINSPARKLE):
@@ -432,7 +573,7 @@ def sync_winsparkle() -> None:
             "或取消该环境变量让构建联网同步。"
         )
 
-    asset = _latest_release_asset(_WINSPARKLE)
+    asset = _release_asset(_WINSPARKLE, tag=pin)
     archive = _ensure_archive(asset)
     targets = {
         src: _PACKAGE_DIR / dst
@@ -442,16 +583,14 @@ def sync_winsparkle() -> None:
         tool_source, tool_target = _winsparkle_tool_paths(asset["version"])
         targets[tool_source] = tool_target
     with zipfile.ZipFile(archive) as zf:
-        available = set(zf.namelist())
+        available = list(zf.namelist())
         for src, dest in targets.items():
-            if src not in available:
-                raise NativeSyncError(
-                    f"zip 内未找到 {src}，上游资产结构可能已变化。"
-                )
+            resolved = resolve_named_member(available, src)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(src) as source, dest.open("wb") as out:
+            with zf.open(resolved) as source, dest.open("wb") as out:
                 shutil.copyfileobj(source, out)
     _sync_license(_WINSPARKLE, asset["release"])
+    _write_platform_provenance("winsparkle", asset)
 
 
 def sync(platform_name: str | None = None) -> None:

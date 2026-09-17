@@ -74,6 +74,9 @@ def _macos_package_data() -> list[str]:
         "bin/sign_update",
         "sparklehelper.nuitka-package.config.yml",
     }
+    provenance = _PACKAGE_DIR / "native-provenance.json"
+    if provenance.is_file():
+        files.add("native-provenance.json")
     _add_existing_license(files, "Sparkle-LICENSE.txt")
     if _FRAMEWORK_SYMLINK_MANIFEST.is_file():
         files.add(str(_FRAMEWORK_SYMLINK_MANIFEST.relative_to(_PACKAGE_DIR)))
@@ -103,6 +106,9 @@ def _windows_package_data() -> list[str]:
         "sparklehelper.nuitka-package.config.yml",
         "winsparkle/winsparkle.h",
     }
+    provenance = _PACKAGE_DIR / "native-provenance.json"
+    if provenance.is_file():
+        files.add("native-provenance.json")
     if arch != "x86":
         files.add("bin/winsparkle-tool.exe")
     _add_existing_license(files, "WinSparkle-LICENSE.txt")
