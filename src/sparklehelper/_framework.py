@@ -231,11 +231,23 @@ def restore_framework_symlinks(
 
 
 def bundled_winsparkle_path(arch: str) -> Path:
-    """返回随 wheel 分发的 ``WinSparkle.dll`` 路径（按架构选子目录）。
+    """返回随包分发的 ``WinSparkle.dll`` 路径（按架构选子目录）。
 
-    ``arch`` 为 ``"x64"`` / ``"x86"`` / ``"arm64"``。
+    ``arch`` 为 ``"x64"`` / ``"x86"`` / ``"arm64"``。每个 Windows wheel 只含
+    与平台 tag 匹配的那一份；源码同步后三份都可能存在。
     """
     return _PACKAGE_DIR / "winsparkle" / arch / "WinSparkle.dll"
+
+
+def present_bundled_winsparkle_paths() -> list[Path]:
+    """返回磁盘上实际存在的随包 ``WinSparkle.dll``（架构子目录）。"""
+    from ._windows_arch import ARCHS
+
+    return [
+        path
+        for arch in ARCHS
+        if (path := bundled_winsparkle_path(arch)).is_file()
+    ]
 
 
 def nuitka_config_path() -> Path:
@@ -1023,6 +1035,7 @@ __all__ = [
     "restore_framework_symlinks",
     "write_framework_symlink_manifest",
     "bundled_winsparkle_path",
+    "present_bundled_winsparkle_paths",
     "nuitka_config_path",
     "nuitka_plugin_path",
     "main",

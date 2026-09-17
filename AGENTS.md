@@ -191,7 +191,7 @@ CI 的门禁是 `ruff check`。`ruff format` 是格式化工具：仓库既有�
 SparkleHelper 是一个 **packaging-repo 风格的 Python 库**，为 macOS Sparkle（ObjC）与 Windows WinSparkle（C/ctypes）原生更新框架提供统一封装，职责有三：
 
 1. **运行时接口**：向用户提供统一的 `Updater` 门面，无需手写 ObjC/C 桥接即可在 macOS/Windows 应用中使用 Sparkle/WinSparkle 的自动更新能力。
-2. **离线打包**：wheel 内嵌平台原生运行时（`Sparkle.framework` / 三架构 `WinSparkle.dll`），通过 PyInstaller hook 与 Nuitka package config/plugin 在打包期收集，最终用户打包全程不联网。
+2. **离线打包**：wheel 内嵌平台原生运行时（`Sparkle.framework` / 与 wheel tag 对应的一份 `WinSparkle.dll`），通过 PyInstaller hook 与 Nuitka package config/plugin 在打包期收集，最终用户打包全程不联网。
 3. **发布制作**：捆绑上游 `generate_keys` / `sign_update` / `generate_appcast` / `BinaryDelta`（macOS）与 `winsparkle-tool.exe`（Windows x64/ARM64），经 `sparklehelper release` CLI 转发。
 
 ## 8. 架构速览

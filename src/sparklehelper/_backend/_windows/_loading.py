@@ -1,8 +1,9 @@
 """WinSparkle.dll 的运行时加载（进程级单例缓存）。
 
-WinSparkle 是纯 C ``__cdecl`` 库，提供 x64 / x86 / arm64 三套预编译 DLL。
-本模块按当前进程架构选择匹配的 DLL，解析其磁盘路径，并 ``ctypes.CDLL``
-加载。加载一次后缓存到模块级，避免重复加载与句柄泄漏。
+WinSparkle 是纯 C ``__cdecl`` 库，上游提供 x64 / x86 / arm64 三套预编译 DLL。
+每个 Windows wheel 只打入与平台 tag 匹配的那一份；源码树在同步后仍可能
+三份都在。本模块解析磁盘路径并 ``ctypes.CDLL`` 加载，加载一次后缓存到
+模块级，避免重复加载与句柄泄漏。
 
 DLL 路径解析优先级（见 :func:`resolve_winsparkle_path`）：
     1. 显式传入的 ``dll_path``
@@ -10,7 +11,7 @@ DLL 路径解析优先级（见 :func:`resolve_winsparkle_path`）：
     3. 主可执行文件同目录（PyInstaller / Nuitka 打包后 DLL 与 exe 并排）
     4. Nuitka ``__compiled__.containing_dir`` 下的 ``WinSparkle.dll``
     5. PyInstaller 内部目录（onedir 下通常是 ``_internal/WinSparkle.dll``）
-    6. wheel 内置的 ``winsparkle/<arch>/WinSparkle.dll``
+    6. wheel 内置：只有一份就直接用；多份时按进程架构选子目录
 
 非 win32 安全
 -------------
@@ -21,10 +22,9 @@ Win32 相关初始化）。``import ctypes`` 延迟到 :func:`load_winsparkle` �
 from __future__ import annotations
 
 import os
-import platform
-import struct
 import sys
 
+from ..._windows_arch import current_arch
 from ...errors import SparkleNotAvailableError
 
 # ---------------------------------------------------------------------------
@@ -36,26 +36,6 @@ _winsparkle_dll = None
 
 _winsparkle_path: str | None = None
 """已加载 DLL 的磁盘路径，便于诊断与测试。"""
-
-
-# ---------------------------------------------------------------------------
-# 架构选择
-# ---------------------------------------------------------------------------
-
-
-def current_arch() -> str:
-    """返回当前进程匹配的 DLL 架构目录名：``"x64"`` / ``"x86"`` / ``"arm64"``。
-
-    按进程的指针宽度（而非 OS）判断：32 位 Python 进程跑在 64 位 Windows 上
-    必须加载 x86 DLL，反之亦然——DLL 架构必须与宿主进程一致，否则
-    ``LoadLibrary`` 会失败（错误码 193）。
-    """
-    machine = platform.machine().lower()
-    # Windows on ARM：machine 返回 "arm64" / "aarch64"。
-    if machine in ("arm64", "aarch64") or "arm" in machine:
-        return "arm64"
-    bits = struct.calcsize("P") * 8
-    return "x64" if bits == 64 else "x86"
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +72,7 @@ def resolve_winsparkle_path(explicit: str | None = None) -> str:
         3. 主可执行文件同目录（打包场景，DLL 与 exe 并排）
         4. Nuitka ``__compiled__.containing_dir`` 下的 ``WinSparkle.dll``
         5. PyInstaller 内部目录（onedir 下通常是 ``_internal``）
-        6. wheel 内置（按 :func:`current_arch` 选子目录）
+        6. wheel 内置：仅一份时直接用；多份时按 :func:`current_arch` 选子目录
     """
     if explicit:
         path = os.path.expanduser(explicit)
@@ -110,8 +90,6 @@ def resolve_winsparkle_path(explicit: str | None = None) -> str:
         raise SparkleNotAvailableError(
             f"SPARKLEHELPER_WINSPARKLE_PATH points to non-existent path: {path}"
         )
-
-    arch = current_arch()
 
     # 打包场景：WinSparkle.dll 与主可执行文件并排。
     exe_dir = os.path.dirname(sys.executable)
@@ -132,9 +110,13 @@ def resolve_winsparkle_path(explicit: str | None = None) -> str:
         if os.path.isfile(candidate):
             return os.path.abspath(candidate)
 
-    # wheel 内置：winsparkle/<arch>/WinSparkle.dll
-    from ..._framework import bundled_winsparkle_path
+    from ..._framework import bundled_winsparkle_path, present_bundled_winsparkle_paths
 
+    present = present_bundled_winsparkle_paths()
+    if len(present) == 1:
+        return str(present[0])
+
+    arch = current_arch()
     bundled = bundled_winsparkle_path(arch)
     if bundled.is_file():
         return str(bundled)

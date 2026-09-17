@@ -1,7 +1,7 @@
 """PyInstaller hook for sparklehelper: 跨平台收集二进制资源。
 
 macOS: 收集 ``Sparkle.framework``（Mach-O 检测 + 符号链接重建）。
-Windows: 收集 ``WinSparkle.dll``（按进程架构选 x64/x86/arm64）。
+Windows: 收集 ``WinSparkle.dll``（wheel 内仅一份，与平台 tag 对应）。
 
 框架/DLL 定位优先级（两端各自）:
     macOS:
@@ -11,7 +11,7 @@ Windows: 收集 ``WinSparkle.dll``（按进程架构选 x64/x86/arm64）。
         1. 环境变量 ``SPARKLEHELPER_WINSPARKLE_PATH``
         2. 主可执行文件同目录
         3. PyInstaller 内部目录（onedir 下通常是 ``_internal/WinSparkle.dll``）
-        4. wheel 内置的 ``winsparkle/<arch>/WinSparkle.dll``
+        4. wheel 内置的 ``winsparkle/<arch>/WinSparkle.dll``（仅当前 tag 那一份）
 
 macOS 收集策略:
     - 读取 wheel 构建时保存的符号链接 manifest，作为 framework 标准布局；
@@ -52,7 +52,7 @@ def _resolve_winsparkle_path():
     """Windows：解析 WinSparkle.dll 路径（优先级 env → exe_dir → _MEIPASS → bundled）。
 
     复用运行时 ``_loading.resolve_winsparkle_path``，保持打包期与运行时
-    定位逻辑一致（含按进程架构选 DLL）。
+    定位逻辑一致。
     """
     env = os.environ.get("SPARKLEHELPER_WINSPARKLE_PATH")
     if env:
