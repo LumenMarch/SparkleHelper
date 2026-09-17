@@ -470,5 +470,43 @@ class Updater:
         """
         return self._backend.observe_can_check_for_updates(callback)
 
+    # ------------------------------------------------------------------
+    # WinSparkleExtras（Windows 独有；macOS 上调用会 AttributeError）
+    # ------------------------------------------------------------------
+
+    def set_registry_path(self, path: str) -> None:
+        """自定义 WinSparkle registry 路径。必须在 :meth:`start` 前调用。"""
+        self._backend.set_registry_path(path)
+
+    def set_can_shutdown_callback(
+        self, callback: Callable[[], bool] | None
+    ) -> None:
+        """Windows：安装器启动前询问宿主是否可以退出。必须在 :meth:`start` 前调用。
+
+        macOS 由 Sparkle 自行终止并拉起，无对应钩子。回调不在主线程。
+        """
+        self._backend.set_can_shutdown_callback(callback)
+
+    def set_shutdown_request_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        """Windows：安装器已启动，宿主应立即优雅退出。必须在 :meth:`start` 前调用。
+
+        未注册时 WinSparkle 的 ``RequestShutdown`` 是空操作。回调不在主线程。
+        """
+        self._backend.set_shutdown_request_callback(callback)
+
+    def set_user_run_installer_callback(
+        self, callback: Callable[[str], bool | int] | None
+    ) -> None:
+        """Windows：接管安装包执行。必须在 :meth:`start` 前调用。
+
+        ``callback(path)`` 返回 True/1 表示已处理，False/0 走 WinSparkle
+        默认安装，-1 表示出错。对应 macOS 的
+        ``updater_will_install_update_on_quit``，但由应用启动安装器而不是
+        调用 Sparkle 提供的 block。回调不在主线程。
+        """
+        self._backend.set_user_run_installer_callback(callback)
+
 
 __all__ = ["Updater", "Subscription", "ensure_runnable", "UpdaterDelegate"]

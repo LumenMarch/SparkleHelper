@@ -374,5 +374,31 @@ class MacOSBackend:
         """订阅 ``canCheckForUpdates`` 变化（便捷封装）。"""
         return self.observe("can_check_for_updates", callback)
 
+    # ------------------------------------------------------------------
+    # Windows-only（Sparkle 无对应物）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _unsupported_windows(member: str) -> AttributeError:
+        return AttributeError(
+            f"{member} is Windows-only (Sparkle has no equivalent)."
+        )
+
+    def set_registry_path(self, path: str) -> None:
+        raise self._unsupported_windows("set_registry_path")
+
+    def set_can_shutdown_callback(self, callback: Callable[[], bool] | None) -> None:
+        raise self._unsupported_windows("set_can_shutdown_callback")
+
+    def set_shutdown_request_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        raise self._unsupported_windows("set_shutdown_request_callback")
+
+    def set_user_run_installer_callback(
+        self, callback: Callable[[str], bool | int] | None
+    ) -> None:
+        raise self._unsupported_windows("set_user_run_installer_callback")
+
 
 __all__ = ["MacOSBackend"]

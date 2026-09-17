@@ -313,11 +313,37 @@ class SparkleExtras(Protocol):
 class WinSparkleExtras(Protocol):
     """Windows 独有能力契约（``WindowsBackend`` 额外实现）。
 
-    WinSparkle 有、Sparkle 无对应物的能力。
+    WinSparkle 有、Sparkle 无对应物的能力。必须在 ``start`` / ``win_sparkle_init``
+    之前调用。
+
+    重启归属
+    --------
+    macOS Sparkle 在更新流程内自行终止并拉起宿主。Windows 上安装器负责写盘，
+    宿主必须通过 ``can_shutdown`` / ``shutdown_request`` 退出，或通过
+    ``user_run_installer`` 接管安装；未注册时 ``RequestShutdown`` 是空操作，
+    会出现旧进程还在、新构建已在盘上的状态。这些回调不在主线程调用。
     """
 
     def set_registry_path(self, path: str) -> None:
         """自定义 registry 存储路径。必须在 ``start`` 前调用。"""
+        ...
+
+    def set_can_shutdown_callback(
+        self, callback: Callable[[], bool] | None
+    ) -> None:
+        """安装器启动前询问宿主是否可以退出。返回 True 才继续 ``shutdown_request``。"""
+        ...
+
+    def set_shutdown_request_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        """安装器已启动，宿主应立即优雅退出。"""
+        ...
+
+    def set_user_run_installer_callback(
+        self, callback: Callable[[str], bool | int] | None
+    ) -> None:
+        """接管安装器：参数为安装包路径。True/1 表示已处理，False/0 走 WinSparkle 默认，-1 表示出错。"""
         ...
 
 

@@ -133,3 +133,21 @@ def test_windows_macos_only_members_raise(monkeypatch, member_name):
             getattr(updater, member_name)
         else:
             getattr(updater, member_name)()
+
+
+def test_windows_updater_forwards_shutdown_installer_hooks(monkeypatch):
+    dll = _patch_windows_facade(monkeypatch)
+    updater = Updater(feed_url="https://example.com/appcast.xml")
+    updater.set_registry_path("Software\\Demo\\Updates")
+    updater.set_can_shutdown_callback(lambda: True)
+    updater.set_shutdown_request_callback(lambda: None)
+    updater.set_user_run_installer_callback(lambda path: 1)
+
+    dll.win_sparkle_set_registry_path.assert_called_once_with(
+        b"Software\\Demo\\Updates"
+    )
+    dll.win_sparkle_set_can_shutdown_callback.assert_called_once()
+    dll.win_sparkle_set_shutdown_request_callback.assert_called_once()
+    dll.win_sparkle_set_user_run_installer_callback.assert_called_once()
+    wrapped = dll.win_sparkle_set_can_shutdown_callback.call_args[0][0]
+    assert wrapped() == 1

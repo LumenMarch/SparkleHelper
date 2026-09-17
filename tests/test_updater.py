@@ -537,3 +537,18 @@ def test_ensure_runnable_missing_feed_url(monkeypatch):
 
     with pytest.raises(ConfigurationError, match="SUFeedURL"):
         ensure_runnable()
+
+
+@pytest.mark.parametrize(
+    "method_name,args",
+    [
+        ("set_registry_path", ("Software\\Demo",)),
+        ("set_can_shutdown_callback", (lambda: True,)),
+        ("set_shutdown_request_callback", (lambda: None,)),
+        ("set_user_run_installer_callback", (lambda path: 1,)),
+    ],
+)
+def test_macos_windows_extras_raise(monkeypatch, method_name, args):
+    updater = _make_updater(monkeypatch)
+    with pytest.raises(AttributeError, match="Windows-only"):
+        getattr(updater, method_name)(*args)

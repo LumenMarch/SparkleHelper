@@ -16,6 +16,7 @@ Windows 上交由 WinSparkle 自身管理）。
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from ..base import Callbacks, UpdateConfig
@@ -222,12 +223,104 @@ class WindowsBackend:
     # WinSparkleExtras（Windows 独有）
     # ------------------------------------------------------------------
 
+    def _require_before_start(self, member: str) -> None:
+        if self._dll is None:
+            raise RuntimeError("后端尚未配置，请先调用 configure()。")
+        if self._started:
+            raise RuntimeError(f"{member} 必须在 start() 前调用。")
+
     def set_registry_path(self, path: str) -> None:
         """自定义 registry 存储路径（如 ``Software\\MyApp\\Updates``）。
 
         必须在 :meth:`start` 前调用。
         """
+        self._require_before_start("set_registry_path")
         self._dll.win_sparkle_set_registry_path(path.encode("utf-8"))
+
+    def set_can_shutdown_callback(
+        self, callback: Callable[[], bool] | None
+    ) -> None:
+        """安装器启动前询问是否可以退出。未注册时 WinSparkle 视为空操作。
+
+        回调不在主线程。异常记日志并返回 False（不允许退出）。
+        """
+        self._require_before_start("set_can_shutdown_callback")
+        if callback is None:
+            self._dll.win_sparkle_set_can_shutdown_callback(None)
+            return
+
+        can_shutdown_t = _bindings.get_can_shutdown_callback_type()
+
+        def _c_can_shutdown() -> int:
+            try:
+                return 1 if callback() else 0
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("can_shutdown callback failed")
+                return 0
+
+        wrapped = can_shutdown_t(_c_can_shutdown)
+        self._callbacks_holder.append(wrapped)
+        self._dll.win_sparkle_set_can_shutdown_callback(wrapped)
+
+    def set_shutdown_request_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        """安装器已启动，宿主应立即优雅退出。
+
+        回调不在主线程。异常记日志并吞掉，避免越过 C 边界。
+        """
+        self._require_before_start("set_shutdown_request_callback")
+        if callback is None:
+            self._dll.win_sparkle_set_shutdown_request_callback(None)
+            return
+
+        callback_t = _bindings.get_callback_type()
+
+        def _c_shutdown_request() -> None:
+            try:
+                callback()
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("shutdown_request callback failed")
+
+        wrapped = callback_t(_c_shutdown_request)
+        self._callbacks_holder.append(wrapped)
+        self._dll.win_sparkle_set_shutdown_request_callback(wrapped)
+
+    def set_user_run_installer_callback(
+        self, callback: Callable[[str], bool | int] | None
+    ) -> None:
+        """接管安装包执行。返回 True/1 表示已处理，False/0 走默认，-1 出错。
+
+        回调不在主线程。Python 异常映射为 ``WINSPARKLE_RETURN_ERROR`` (-1)。
+        """
+        self._require_before_start("set_user_run_installer_callback")
+        if callback is None:
+            self._dll.win_sparkle_set_user_run_installer_callback(None)
+            return
+
+        installer_t = _bindings.get_user_run_installer_callback_type()
+
+        def _c_user_run_installer(path: str | None) -> int:
+            try:
+                result = callback(path or "")
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("user_run_installer callback failed")
+                return _bindings.WINSPARKLE_RETURN_ERROR
+            if result is True:
+                return 1
+            if result is False:
+                return 0
+            try:
+                code = int(result)
+            except (TypeError, ValueError):
+                return _bindings.WINSPARKLE_RETURN_ERROR
+            if code in (0, 1, _bindings.WINSPARKLE_RETURN_ERROR):
+                return code
+            return _bindings.WINSPARKLE_RETURN_ERROR
+
+        wrapped = installer_t(_c_user_run_installer)
+        self._callbacks_holder.append(wrapped)
+        self._dll.win_sparkle_set_user_run_installer_callback(wrapped)
 
     # ------------------------------------------------------------------
     # macOS-only（WinSparkle 无对应物）
