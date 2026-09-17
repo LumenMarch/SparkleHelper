@@ -71,6 +71,7 @@ src/sparklehelper/Sparkle.framework.symlinks.json
 src/sparklehelper/bin/
 src/sparklehelper/licenses/*.txt
 src/sparklehelper/winsparkle/*/WinSparkle.dll
+src/sparklehelper/native-provenance.json
 
 # ─────────────────────────────────────────────────────────────
 # uv

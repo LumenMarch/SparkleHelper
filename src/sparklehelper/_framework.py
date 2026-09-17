@@ -239,6 +239,23 @@ def bundled_winsparkle_path(arch: str) -> Path:
     return _PACKAGE_DIR / "winsparkle" / arch / "WinSparkle.dll"
 
 
+def bundled_native_provenance_path() -> Path:
+    """wheel 内上游 provenance 记录路径。"""
+    return _PACKAGE_DIR / "native-provenance.json"
+
+
+def load_native_provenance() -> dict | None:
+    """读取已安装 wheel 记录的 Sparkle / WinSparkle tag 与 digest。不联网。"""
+    path = bundled_native_provenance_path()
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def present_bundled_winsparkle_paths() -> list[Path]:
     """返回磁盘上实际存在的随包 ``WinSparkle.dll``（架构子目录）。"""
     from ._windows_arch import ARCHS
@@ -997,6 +1014,10 @@ def _build_parser() -> argparse.ArgumentParser:
         add_help=False,
         help="Run bundled release authoring tools.",
     )
+    subparsers.add_parser(
+        "native-info",
+        help="Print the Sparkle / WinSparkle release recorded in this wheel.",
+    )
     return parser
 
 
@@ -1013,6 +1034,13 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(arguments)
     if args.command == "nuitka-config":
         print(nuitka_config_path())
+        return 0
+    if args.command == "native-info":
+        data = load_native_provenance()
+        if data is None:
+            print("No native provenance recorded in this install.", file=sys.stderr)
+            return 1
+        print(json.dumps(data, indent=2, sort_keys=True))
         return 0
     raise AssertionError(f"Unhandled command: {args.command}")
 
@@ -1036,6 +1064,8 @@ __all__ = [
     "write_framework_symlink_manifest",
     "bundled_winsparkle_path",
     "present_bundled_winsparkle_paths",
+    "bundled_native_provenance_path",
+    "load_native_provenance",
     "nuitka_config_path",
     "nuitka_plugin_path",
     "main",
