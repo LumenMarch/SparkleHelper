@@ -242,8 +242,10 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 
 ### 10.1 wheel 内嵌 native
 
-- 构建期 `scripts/sync_native_deps.py` 从 GitHub `releases/latest` API 下载最新 release + SHA256 校验（取自 `digest` 字段），原子替换到 `src/sparklehelper/`。
-- `SPARKLEHELPER_SKIP_NATIVE_SYNC=1` 禁止联网，仅校验本地资源完整性（离线构建）。
+- 构建期 `scripts/sync_native_deps.py` 默认从 GitHub `releases/latest` API 下载最新 release + SHA256 校验（取自 `digest` 字段），原子替换到 `src/sparklehelper/`。
+- 可选钉住 tag：`SPARKLEHELPER_SPARKLE_TAG` / `SPARKLEHELPER_WINSPARKLE_TAG`。未设时行为与原来的 latest 相同。
+- 同步成功后写入 `native-provenance.json`（tag / archive / sha256 / resolved_at）。已安装 wheel 用 `sparklehelper native-info` 离线查看。
+- `SPARKLEHELPER_SKIP_NATIVE_SYNC=1` 禁止联网，校验本地文件；若同时设了 pin，还要求 provenance 中的 tag 与 pin 一致。
 - `Sparkle.framework.symlinks.json` 记录 framework 顶层符号链接布局，wheel 构建期生成，被 .gitignore 忽略、未入库。
 
 ### 10.2 PyInstaller hook
@@ -256,19 +258,34 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 - 必须经 `sparklehelper nuitka` wrapper（`--mode=app` = standalone + bundle，**推荐**），它负责参数转发、注入 `--user-plugin` 与 `--user-package-configuration-file`。
 - **macOS onefile 不受支持**；plist 补丁仅在 standalone app mode 生效（非 standalone 返回 None + 告警）。
 
+### 10.4 真机打包验收清单
+
+PyInstaller hook 会丢掉 `_CodeSignature`、`.DS_Store`、`__pycache__`。复制进 `.app` 的 `Sparkle.framework` 及其 XPC / helper 是未签名的，必须随宿主重签。
+
+1. 用 `sparklehelper pyinstaller`（onedir）或 `sparklehelper nuitka --mode=app` 打出 `.app`。
+2. 确认 `Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc` 与 `Downloader.xpc` 存在。
+3. 确认 `Autoupdate` 与 `Updater.app` 在 framework 内。
+4. 对 `.app` 做 codesign（含 `--deep` 或按 Sparkle 文档分别签 XPC / helper），再 notarize。
+5. Info.plist 里按需设置 `SUEnableInstallerLauncherService`、`SUEnableDownloaderService`、`SUEnableInstallerConnectionService`、`SUEnableInstallerStatusService`。
+6. 跑一次真更新：下载 → 校验签名 → 安装 → 旧进程退出、新构建拉起。
+
+darwin 上 `tests/test_sparkle_smoke.py` 会真加载 wheel 内 framework 并调用 `initWithStartingUpdater_updaterDelegate_userDriverDelegate_`；framework 未同步时 skip。CI 的 test job 不同步 native，这条通常 skip。
+
 ## 11. 开发命令
 
 - 环境准备：`uv sync --locked --extra dev`（装齐 `pytest` / `pytest-cov` / `ruff`，见第 5 节）
 - 单元测试与静态检查：命令见第 5 节，与 CI 的 test job 同源
 - ruff 配置：`pyproject.toml` 的 `[tool.ruff]`、`[tool.ruff.lint]`、`[tool.ruff.format]`（line-length 88、target-version py311、`extend-exclude` 排除 vendored submodule）
-- wheel 构建：`uv build --wheel`（解析并下载上游最新 native 资源）
+- wheel 构建：`uv build --wheel`（默认解析上游 latest native 资源）
+- 钉住上游：`SPARKLEHELPER_SPARKLE_TAG=2.10.0 SPARKLEHELPER_WINSPARKLE_TAG=v0.9.4 uv build --wheel`
+- 查看已装 wheel 的上游记录：`sparklehelper native-info`
 - 离线构建：`SPARKLEHELPER_SKIP_NATIVE_SYNC=1 uv build --wheel`
 - 依赖管理：用 `uv`（`uv sync` / `uv lock`），不用 `pip`
 
 ## 12. 常见陷阱
 
 - **submodule（`Sparkle/`、`winsparkle/`）仅作源码浏览参考，不参与构建**。
-- **framework 与发布工具的版本随上游 latest 漂移**：wheel 内嵌的是构建当时 `releases/latest` 那一版，两次构建可能不同。要知道实际内嵌版本就查上游 release 标签——上游仓库与资产名匹配式都写在 `scripts/sync_native_deps.py` 顶部的两个资产配置常量里，macOS 与 Windows 各一条，按其中的 `repo` 直接查最新 tag 即可。
+- **framework 与发布工具的版本默认随上游 latest 漂移**：未设 pin 时两次构建可能不同。已装 wheel 用 `sparklehelper native-info` 看实际 tag 与 digest；发布构建应设 `SPARKLEHELPER_SPARKLE_TAG` / `SPARKLEHELPER_WINSPARKLE_TAG`。
 - **`SPARKLEHELPER_FRAMEWORK_PATH` 运行时优先级低于主 bundle**：若 `.app` 内已嵌入 framework（打包场景常态），env 实际不生效；只有 hook 打包期 env 才优先。
 - **delegate 回调异常被吞**：异常仅记日志，需在日志中排查。
 - **KVO `Subscription` 必须持有**：`Subscription.cancel()` 幂等、`__del__` 兜底注销，但对象被 GC 前不应丢失引用。
@@ -277,13 +294,13 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 ## 13. 已知边界
 
 - **onefile wrapper AST 修补硬编码 `exe` 变量名**：`_is_onefile_bundle_call` 要求 BUNDLE 首参变量名恰为 `exe`；若用户 spec 用其他名字（`app_exe` 等），wrapper 不修补而 hook 守卫放行 → 产出静默损坏的 .app。两个判断维度不一致。
-- **构建期拉最新 release 不固定版本**：可复现性依赖上游 latest 不变化；SHA256 严格校验（防篡改）但版本不固定。
+- **未 pin 时构建期仍拉 latest**：SHA256 防篡改；要可复现必须设 tag pin。
 - **hook 守卫依赖 PyInstaller 内部 `CONF["spec"]`**：取不到 spec 时 fail-open（返回 False），PyInstaller 版本变化时"hook 会中止构建"的承诺可能失效。
 - **Nuitka plugin 深度依赖 Nuitka 私有内部符号**：`MacOSApp.createPlistInfoFile`、`Standalone._normalizeMacOSFrameworkBundleLayout`、`options.Options.isStandaloneMode` 等全为内部 API，Nuitka 升级即可能碎。
-- **delegate adapter 绑定 Sparkle 2.x selector**：若未来 Sparkle 改动 delegate 方法签名，回调会**静默不触发**（无运行时诊断）。
+- **delegate adapter 绑定 Sparkle 2.x selector**：Python 方法名拼错或实现了表外名字会在构造 adapter 时 `warnings.warn`。上游改了 selector 签名仍会静默不触发。
 
 ## 14. 测试体系要点
 
-- 完全 mock 真实 ObjC/ctypes：用假 `objc`/`Foundation` 模块注入 `sys.modules`、`_MockSPUUpdater`/`_MockController` 假 ObjC 对象、mock DLL。
+- 默认 mock 真实 ObjC/ctypes：用假 `objc`/`Foundation` 模块注入 `sys.modules`、`_MockSPUUpdater`/`_MockController` 假 ObjC 对象、mock DLL。darwin 上 `test_sparkle_smoke.py` 在 framework 已同步时真加载 Sparkle。
 - 已知盲区：onefile spec AST 修补无测试；release 命令路径无测试；Windows 真实 DLL 与真实 Sparkle framework 从未加载；无 wheel 构建集成测试；无 PyInstaller/Nuitka 端到端构建测试。
 - `test_framework.py` 里 framework 与 license 的存在性用例用 `skipif` 挂住对应产物：先跑一次联网同步（见第 10.1 节）它们才参与统计。判定标准是无 failed 与 error；skip 只应来自非 darwin 平台的 `darwin` marker 与上述 `skipif`。
