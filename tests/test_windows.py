@@ -1,7 +1,7 @@
 """WindowsBackend：WinSparkle.dll 的 ctypes 桥接。
 
 通过 mock ``ctypes.CDLL`` / ``ctypes.CFUNCTYPE``，在任意平台验证：
-- DLL 架构选择（current_arch 按进程宽度）
+- DLL 架构选择（current_arch 按进程，不跟 OS 原生架构）
 - 路径解析优先级（explicit → env → exe_dir → bundled）
 - DLL 加载的进程级缓存
 - configure() 在 init 前设置 appcast_url / app_details / eddsa_key
@@ -20,6 +20,7 @@ from unittest import mock
 
 import pytest
 
+from sparklehelper import _windows_arch
 from sparklehelper._backend._windows import WindowsBackend, _loading
 from sparklehelper._backend.base import Callbacks, UpdateConfig
 from sparklehelper.errors import SparkleNotAvailableError
@@ -52,21 +53,36 @@ def reset_windows_cache():
 # ---------------------------------------------------------------------------
 
 
-def test_current_arch_x64(monkeypatch):
-    monkeypatch.setattr("platform.machine", lambda: "amd64")
-    # 模拟 64 位进程，不依赖本机 Python 位数（x86 runner 上也能验证 x64 分支）
-    monkeypatch.setattr("struct.calcsize", lambda _: 8)
+def test_current_arch_x64_ignores_native_machine(monkeypatch):
+    """WoA 上模拟的 x64 进程必须选 x64，不能跟 platform.machine() 的 ARM64。"""
+    monkeypatch.setattr("sparklehelper._windows_arch.struct.calcsize", lambda _: 8)
+    monkeypatch.setattr(
+        "sparklehelper._windows_arch.sysconfig.get_platform",
+        lambda: "win-amd64",
+    )
+    monkeypatch.setattr("platform.machine", lambda: "ARM64")
     assert _loading.current_arch() == "x64"
+    assert _windows_arch.wheel_plat_name() == "win_amd64"
 
 
-def test_current_arch_arm64(monkeypatch):
-    monkeypatch.setattr("platform.machine", lambda: "arm64")
+def test_current_arch_arm64_process(monkeypatch):
+    monkeypatch.setattr("sparklehelper._windows_arch.struct.calcsize", lambda _: 8)
+    monkeypatch.setattr(
+        "sparklehelper._windows_arch.sysconfig.get_platform",
+        lambda: "win-arm64",
+    )
     assert _loading.current_arch() == "arm64"
+    assert _windows_arch.wheel_plat_name() == "win_arm64"
 
 
-def test_current_arch_aarch64(monkeypatch):
-    monkeypatch.setattr("platform.machine", lambda: "aarch64")
-    assert _loading.current_arch() == "arm64"
+def test_current_arch_x86_uses_pointer_width(monkeypatch):
+    monkeypatch.setattr("sparklehelper._windows_arch.struct.calcsize", lambda _: 4)
+    monkeypatch.setattr(
+        "sparklehelper._windows_arch.sysconfig.get_platform",
+        lambda: "win-arm64",
+    )
+    assert _loading.current_arch() == "x86"
+    assert _windows_arch.wheel_plat_name() == "win32"
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +185,49 @@ def test_bundled_used_as_fallback(reset_windows_cache, monkeypatch, tmp_path):
 
     path = _loading.resolve_winsparkle_path(None)
     assert os.path.realpath(path) == os.path.realpath(str(bundled_dll))
+
+
+def _plant_bundled_dlls(monkeypatch, tmp_path, arches: tuple[str, ...]):
+    """在 tmp_path 下种下指定架构的假 DLL，并让 bundled 路径指向它们。"""
+    from sparklehelper import _framework
+
+    for arch in arches:
+        dll_dir = tmp_path / "winsparkle" / arch
+        dll_dir.mkdir(parents=True)
+        (dll_dir / "WinSparkle.dll").write_bytes(arch.encode())
+    monkeypatch.setattr(
+        _framework,
+        "bundled_winsparkle_path",
+        lambda arch: tmp_path / "winsparkle" / arch / "WinSparkle.dll",
+    )
+
+
+def test_bundled_single_dll_used_regardless_of_current_arch(
+    reset_windows_cache, monkeypatch, tmp_path
+):
+    """新 wheel 只带一份 DLL 时，不再按 current_arch 选子目录。"""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.delenv("SPARKLEHELPER_WINSPARKLE_PATH", raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(_loading, "current_arch", lambda: "x64")
+    _plant_bundled_dlls(monkeypatch, tmp_path, ("arm64",))
+
+    path = _loading.resolve_winsparkle_path(None)
+    assert os.path.basename(os.path.dirname(path)) == "arm64"
+
+
+def test_bundled_multiple_dlls_uses_current_arch(
+    reset_windows_cache, monkeypatch, tmp_path
+):
+    """源码树 / 旧 wheel 仍有多份时，按进程架构选。"""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.delenv("SPARKLEHELPER_WINSPARKLE_PATH", raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(_loading, "current_arch", lambda: "x64")
+    _plant_bundled_dlls(monkeypatch, tmp_path, ("x64", "arm64"))
+
+    path = _loading.resolve_winsparkle_path(None)
+    assert os.path.basename(os.path.dirname(path)) == "x64"
 
 
 # ---------------------------------------------------------------------------

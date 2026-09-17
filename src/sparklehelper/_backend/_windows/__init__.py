@@ -2,7 +2,7 @@
 
 把 WinSparkle 的纯 C ``__cdecl`` API 按 ctypes 绑定拆分：
 
-- :mod:`._loading`：DLL 定位（按进程架构选 x64/x86/arm64）+ ``ctypes.CDLL`` 加载
+- :mod:`._loading`：DLL 定位（wheel 内仅一份则直接用，多份时按进程架构选）+ ``ctypes.CDLL`` 加载
 - :mod:`._bindings`：C API 函数的 ``restype`` / ``argtypes`` 签名定义
 - :mod:`._backend`：:class:`WindowsBackend`（实现 UpdateBackend + WinSparkleExtras）
 
