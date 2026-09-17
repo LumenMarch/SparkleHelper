@@ -6,9 +6,14 @@
 
 from __future__ import annotations
 
+import warnings
+
+import pytest
+
 from sparklehelper._backend._macos._delegates import (
     _has,
     make_delegate_adapter,
+    warn_unmapped_delegate_methods,
 )
 
 
@@ -406,3 +411,36 @@ def test_will_install_on_quit_true_install_immediately_invokes_block():
     assert delegate.update.version_string == "2"
     delegate.install_immediately()
     assert called == ["install"]
+
+
+class _MisspelledDelegate:
+    def updater_did_find_valid_updat(self, *, update):
+        return None
+
+
+class _HelperDelegate:
+    flag = "ok"
+
+    def save_state(self) -> None:
+        return None
+
+    @property
+    def title(self) -> str:
+        return "unused"
+
+
+def test_misspelled_delegate_method_warns_once():
+    with pytest.warns(UserWarning, match="updater_did_find_valid_updat") as caught:
+        warn_unmapped_delegate_methods(_MisspelledDelegate())
+    assert len(caught) == 1
+    assert "updater_did_find_valid_update" in str(caught[0].message)
+
+
+def test_correct_and_helper_delegates_do_not_warn():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warn_unmapped_delegate_methods(_FullDelegate())
+        warn_unmapped_delegate_methods(_HelperDelegate())
+        warn_unmapped_delegate_methods(None)
+        make_delegate_adapter(_EmptyDelegate())
+    assert caught == []

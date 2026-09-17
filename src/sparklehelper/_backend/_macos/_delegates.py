@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import difflib
 import logging
+import warnings
 from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
@@ -180,6 +182,78 @@ def _has(obj: Any, method_name: str) -> bool:
     """用户对象是否实现了指定方法。"""
     method = getattr(obj, method_name, None)
     return method is not None and callable(method)
+
+
+_CALLBACK_NAME_PREFIXES = (
+    "updater_",
+    "feed_url",
+    "feed_parameters",
+    "allowed_",
+    "user_did",
+    "decryption_",
+)
+
+
+def _supported_delegate_methods() -> frozenset[str]:
+    return frozenset(_SELECTOR_CALLBACKS.values())
+
+
+def _public_callables(delegate: Any) -> list[str]:
+    names: list[str] = []
+    for name in dir(delegate):
+        if name.startswith("_"):
+            continue
+        owner_attr = getattr(type(delegate), name, None)
+        if isinstance(owner_attr, property):
+            continue
+        try:
+            value = getattr(delegate, name)
+        except Exception:  # noqa: BLE001
+            continue
+        if callable(value):
+            names.append(name)
+    return names
+
+
+def _looks_like_callback(name: str, supported: frozenset[str]) -> bool:
+    if any(name.startswith(prefix) for prefix in _CALLBACK_NAME_PREFIXES):
+        return True
+    return bool(difflib.get_close_matches(name, supported, n=1, cutoff=0.72))
+
+
+def warn_unmapped_delegate_methods(delegate: Any) -> None:
+    """对表外、但看起来像回调的方法发出一条警告。
+
+    拼错或实现了 adapter 未映射的名字时，``respondsToSelector_`` 不会问到
+    该方法，更新会按「未实现」继续。helper / property / 非 callable 不警告。
+    """
+    if delegate is None:
+        return
+    supported = _supported_delegate_methods()
+    unmapped = [
+        name
+        for name in _public_callables(delegate)
+        if name not in supported and _looks_like_callback(name, supported)
+    ]
+    if not unmapped:
+        return
+    details: list[str] = []
+    for name in unmapped:
+        close = difflib.get_close_matches(name, list(supported), n=3, cutoff=0.4)
+        if close:
+            suggestions = ", ".join(repr(item) for item in close)
+            details.append(f"{name!r} (did you mean {suggestions}?)")
+        else:
+            details.append(repr(name))
+    supported_list = ", ".join(sorted(supported))
+    warnings.warn(
+        "UpdaterDelegate methods are not mapped by the Sparkle adapter "
+        "and will never be called: "
+        + "; ".join(details)
+        + f". Supported names: {supported_list}",
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 def _selector_name(selector: Any) -> str:
@@ -829,6 +903,7 @@ def make_delegate_adapter(delegate: UpdaterDelegate | None) -> Any:
     """
     if delegate is None:
         return None
+    warn_unmapped_delegate_methods(delegate)
     try:
         adapter_cls = _get_adapter_class()
         return adapter_cls.alloc().initWithDelegate_(delegate)
@@ -842,5 +917,6 @@ __all__ = [
     "Decision",
     "UpdaterDelegate",
     "make_delegate_adapter",
+    "warn_unmapped_delegate_methods",
     "_has",
 ]
