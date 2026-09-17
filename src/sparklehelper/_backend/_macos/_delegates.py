@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
 from ...types import (
@@ -38,7 +39,10 @@ _SELECTOR_CALLBACKS = {
     ),
     "allowedSystemProfileKeysForUpdater:": "allowed_system_profile_keys_for_updater",
     "updater:didFindValidUpdate:": "updater_did_find_valid_update",
+    "updater:didFinishLoadingAppcast:": "updater_did_finish_loading_appcast",
+    "updaterDidNotFindUpdate:": "updater_did_not_find_update",
     "updaterDidNotFindUpdate:error:": "updater_did_not_find_update",
+    "bestValidUpdateInAppcast:forUpdater:": "best_valid_update_in_appcast",
     "updater:shouldProceedWithUpdate:updateCheck:error:": (
         "updater_should_proceed_with_update"
     ),
@@ -53,8 +57,14 @@ _SELECTOR_CALLBACKS = {
     "updater:willExtractUpdate:": "updater_will_extract_update",
     "updater:didExtractUpdate:": "updater_did_extract_update",
     "updater:willInstallUpdate:": "updater_will_install_update",
+    "updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:": (
+        "updater_should_postpone_relaunch"
+    ),
     "updaterShouldRelaunchApplication:": "updater_should_relaunch_application",
     "updaterWillRelaunchApplication:": "updater_will_relaunch_application",
+    "updater:willInstallUpdateOnQuit:immediateInstallationBlock:": (
+        "updater_will_install_update_on_quit"
+    ),
     "updater:willScheduleUpdateCheckAfterDelay:": (
         "updater_will_schedule_update_check"
     ),
@@ -92,7 +102,15 @@ class UpdaterDelegate(Protocol):
 
     def updater_did_find_valid_update(self, *, update: UpdateInfo) -> None: ...
 
-    def updater_did_not_find_update(self, *, error: Exception) -> None: ...
+    def updater_did_finish_loading_appcast(
+        self, *, items: tuple[UpdateInfo, ...]
+    ) -> None: ...
+
+    def updater_did_not_find_update(self, *, error: Exception | None) -> None: ...
+
+    def best_valid_update_in_appcast(
+        self, *, items: tuple[UpdateInfo, ...]
+    ) -> UpdateInfo | None: ...
 
     def updater_should_proceed_with_update(
         self, *, update: UpdateInfo, update_check: UpdateCheckKind
@@ -124,9 +142,17 @@ class UpdaterDelegate(Protocol):
 
     def updater_will_install_update(self, *, update: UpdateInfo) -> None: ...
 
+    def updater_should_postpone_relaunch(
+        self, *, update: UpdateInfo, resume: Callable[[], None]
+    ) -> bool: ...
+
     def updater_should_relaunch_application(self) -> bool: ...
 
     def updater_will_relaunch_application(self) -> None: ...
+
+    def updater_will_install_update_on_quit(
+        self, *, update: UpdateInfo, install_immediately: Callable[[], None]
+    ) -> bool: ...
 
     def updater_will_schedule_update_check(self, *, delay: float) -> None: ...
 
@@ -239,6 +265,70 @@ def _feed_parameters(value: Any) -> tuple[dict[str, str], ...]:
         return ()
 
 
+def _appcast_items(appcast: Any) -> list[Any]:
+    """``SUAppcast.items`` → list；nil / 非序列 → 空列表。"""
+    if appcast is None:
+        return []
+    value = getattr(appcast, "items", None)
+    if callable(value):
+        try:
+            value = value()
+        except TypeError:
+            return []
+    if value is None:
+        return []
+    try:
+        return list(value)
+    except TypeError:
+        return []
+
+
+def _appcast_infos(appcast: Any) -> tuple[UpdateInfo, ...]:
+    return tuple(from_appcast_item(item) for item in _appcast_items(appcast))
+
+
+def _empty_appcast_item() -> Any:
+    """对应 ``+[SUAppcastItem emptyAppcastItem]``；无 ObjC 时用占位对象。"""
+    try:
+        import objc
+
+        cls = objc.lookUpClass("SUAppcastItem")
+        empty = getattr(cls, "emptyAppcastItem", None)
+        if callable(empty):
+            return empty()
+    except Exception:  # noqa: BLE001
+        pass
+    return _EMPTY_APPCAST_ITEM
+
+
+_EMPTY_APPCAST_ITEM = object()
+
+
+def _as_resume(block: Any) -> Callable[[], None]:
+    """把 ObjC block / Python callable 收成无参 ``resume()``。"""
+
+    def resume() -> None:
+        if block is None:
+            return
+        block()
+
+    return resume
+
+
+def _match_appcast_item(objc_items: list[Any], chosen: Any) -> Any:
+    """把 Python 返回的 ``UpdateInfo`` 对回原始 ``SUAppcastItem``。"""
+    if chosen is None:
+        return _empty_appcast_item()
+    if not isinstance(chosen, UpdateInfo):
+        if chosen in objc_items:
+            return chosen
+        return _empty_appcast_item()
+    for item in objc_items:
+        if from_appcast_item(item).version_string == chosen.version_string:
+            return item
+    return _empty_appcast_item()
+
+
 # ---------------------------------------------------------------------------
 # 共用事件转发实现（Python stub 与 ObjC adapter 共用）
 # ---------------------------------------------------------------------------
@@ -249,11 +339,18 @@ class _DelegateMethods:
 
     _py_delegate: UpdaterDelegate
     _py_last_found: bool
+    _py_blocks: list
 
     def _update_callback(self, method_name: str, item: Any) -> Any:
         if not _has(self._py_delegate, method_name):
             return None
         return _invoke(self._py_delegate, method_name, update=from_appcast_item(item))
+
+    def _retain_resume(self, block: Any) -> Callable[[], None]:
+        resume = _as_resume(block)
+        self._py_blocks.append(block)
+        self._py_blocks.append(resume)
+        return resume
 
     def feedURLStringForUpdater_(self, updater) -> str | None:  # noqa: N802
         return _invoke(self._py_delegate, "feed_url_string_for_updater", default=None)
@@ -261,6 +358,30 @@ class _DelegateMethods:
     def updater_didFindValidUpdate_(self, updater, item) -> None:  # noqa: N802
         self._py_last_found = True
         self._update_callback("updater_did_find_valid_update", item)
+
+    def updater_didFinishLoadingAppcast_(self, updater, appcast) -> None:  # noqa: N802
+        _invoke(
+            self._py_delegate,
+            "updater_did_finish_loading_appcast",
+            items=_appcast_infos(appcast),
+        )
+
+    def updaterDidNotFindUpdate_(self, updater) -> None:  # noqa: N802
+        _invoke(self._py_delegate, "updater_did_not_find_update", error=None)
+
+    def bestValidUpdateInAppcast_forUpdater_(  # noqa: N802
+        self, appcast, updater
+    ) -> Any:
+        if not _has(self._py_delegate, "best_valid_update_in_appcast"):
+            return None
+        objc_items = _appcast_items(appcast)
+        chosen = _invoke(
+            self._py_delegate,
+            "best_valid_update_in_appcast",
+            default=None,
+            items=tuple(from_appcast_item(item) for item in objc_items),
+        )
+        return _match_appcast_item(objc_items, chosen)
 
     def updaterDidNotFindUpdate_error_(self, updater, error) -> None:  # noqa: N802
         _invoke(
@@ -314,6 +435,36 @@ class _DelegateMethods:
     def updater_willInstallUpdate_(self, updater, item) -> None:  # noqa: N802
         self._update_callback("updater_will_install_update", item)
 
+    def updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(  # noqa: N802
+        self, updater, item, install_handler
+    ) -> bool:
+        if not _has(self._py_delegate, "updater_should_postpone_relaunch"):
+            return False
+        return bool(
+            _invoke(
+                self._py_delegate,
+                "updater_should_postpone_relaunch",
+                default=False,
+                update=from_appcast_item(item),
+                resume=self._retain_resume(install_handler),
+            )
+        )
+
+    def updater_willInstallUpdateOnQuit_immediateInstallationBlock_(  # noqa: N802
+        self, updater, item, immediate_install_handler
+    ) -> bool:
+        if not _has(self._py_delegate, "updater_will_install_update_on_quit"):
+            return False
+        return bool(
+            _invoke(
+                self._py_delegate,
+                "updater_will_install_update_on_quit",
+                default=False,
+                update=from_appcast_item(item),
+                install_immediately=self._retain_resume(immediate_install_handler),
+            )
+        )
+
     def updaterWillRelaunchApplication_(self, updater) -> None:  # noqa: N802
         _invoke(self._py_delegate, "updater_will_relaunch_application")
 
@@ -355,6 +506,13 @@ class _PythonDelegateStub(_DelegateMethods):
     def __init__(self, delegate: UpdaterDelegate) -> None:
         self._py_delegate = delegate
         self._py_last_found = False
+        self._py_blocks: list = []
+
+    def respondsToSelector_(self, selector) -> bool:  # noqa: N802
+        method_name = _SELECTOR_CALLBACKS.get(_selector_name(selector))
+        if method_name is not None:
+            return _has(self._py_delegate, method_name)
+        return False
 
     def updater_mayPerformUpdateCheck_error_(  # noqa: N802
         self, updater, update_check, error
@@ -465,6 +623,7 @@ def _get_adapter_class() -> Any:
                 return None
             self._py_delegate = delegate
             self._py_last_found = False
+            self._py_blocks = []
             return self
 
         def respondsToSelector_(self, selector):  # noqa: N802
@@ -478,6 +637,19 @@ def _get_adapter_class() -> Any:
 
         def updater_didFindValidUpdate_(self, updater, item):  # noqa: N802
             return _DelegateMethods.updater_didFindValidUpdate_(self, updater, item)
+
+        def updater_didFinishLoadingAppcast_(self, updater, appcast):  # noqa: N802
+            return _DelegateMethods.updater_didFinishLoadingAppcast_(
+                self, updater, appcast
+            )
+
+        def updaterDidNotFindUpdate_(self, updater):  # noqa: N802
+            return _DelegateMethods.updaterDidNotFindUpdate_(self, updater)
+
+        def bestValidUpdateInAppcast_forUpdater_(self, appcast, updater):  # noqa: N802
+            return _DelegateMethods.bestValidUpdateInAppcast_forUpdater_(
+                self, appcast, updater
+            )
 
         def updaterDidNotFindUpdate_error_(self, updater, error):  # noqa: N802
             return _DelegateMethods.updaterDidNotFindUpdate_error_(self, updater, error)
@@ -517,6 +689,24 @@ def _get_adapter_class() -> Any:
 
         def updater_willInstallUpdate_(self, updater, item):  # noqa: N802
             return _DelegateMethods.updater_willInstallUpdate_(self, updater, item)
+
+        def updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(  # noqa: N802
+            self, updater, item, install_handler
+        ):
+            return (
+                _DelegateMethods.updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(
+                    self, updater, item, install_handler
+                )
+            )
+
+        def updater_willInstallUpdateOnQuit_immediateInstallationBlock_(  # noqa: N802
+            self, updater, item, immediate_install_handler
+        ):
+            return (
+                _DelegateMethods.updater_willInstallUpdateOnQuit_immediateInstallationBlock_(
+                    self, updater, item, immediate_install_handler
+                )
+            )
 
         def updaterWillRelaunchApplication_(self, updater):  # noqa: N802
             return _DelegateMethods.updaterWillRelaunchApplication_(self, updater)

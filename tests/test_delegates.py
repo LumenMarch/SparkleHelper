@@ -42,8 +42,22 @@ class _FullDelegate:
     def updater_did_find_valid_update(self, *, update):
         self.events.append(("found", update))
 
+    def updater_did_finish_loading_appcast(self, *, items):
+        self.events.append(("appcast", items))
+
     def updater_did_not_find_update(self, *, error):
         self.events.append(("not_found", error))
+
+    def best_valid_update_in_appcast(self, *, items):
+        return items[0] if items else None
+
+    def updater_should_postpone_relaunch(self, *, update, resume):
+        self.events.append(("postpone", update, resume))
+        return False
+
+    def updater_will_install_update_on_quit(self, *, update, install_immediately):
+        self.events.append(("quit_install", update, install_immediately))
+        return False
 
     def updater_did_download_update(self, *, update):
         self.events.append(("downloaded", update))
@@ -119,6 +133,14 @@ class _FakeState:
 
     def userInitiated(self):
         return True
+
+
+class _FakeAppcast:
+    def __init__(self, items):
+        self._items = items
+
+    def items(self):
+        return self._items
 
 
 # ---------------------------------------------------------------------------
@@ -258,3 +280,129 @@ def test_adapter_partial_delegate_only_known_methods():
     assert adapter.feedURLStringForUpdater_(None) == "https://example.com/partial.xml"
     # 未实现的返回默认。
     assert adapter.allowedChannelsForUpdater_(None) == frozenset()
+
+
+_NEW_HOOK_SELECTORS = (
+    "updater:didFinishLoadingAppcast:",
+    "updaterDidNotFindUpdate:",
+    "bestValidUpdateInAppcast:forUpdater:",
+    "updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:",
+    "updater:willInstallUpdateOnQuit:immediateInstallationBlock:",
+)
+
+
+def test_new_hooks_responds_only_when_implemented():
+    empty = make_delegate_adapter(_EmptyDelegate())
+    full = make_delegate_adapter(_FullDelegate())
+    for selector in _NEW_HOOK_SELECTORS:
+        assert empty.respondsToSelector_(selector) is False
+        assert full.respondsToSelector_(selector) is True
+
+
+def test_new_hooks_empty_delegate_keeps_sparkle_defaults():
+    adapter = make_delegate_adapter(_EmptyDelegate())
+    item = _FakeItem()
+    appcast = _FakeAppcast([item])
+    resume_calls: list[str] = []
+
+    adapter.updater_didFinishLoadingAppcast_(None, appcast)
+    adapter.updaterDidNotFindUpdate_(None)
+    assert adapter.bestValidUpdateInAppcast_forUpdater_(appcast, None) is None
+    assert (
+        adapter.updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(
+            None, item, lambda: resume_calls.append("resume")
+        )
+        is False
+    )
+    assert (
+        adapter.updater_willInstallUpdateOnQuit_immediateInstallationBlock_(
+            None, item, lambda: resume_calls.append("install")
+        )
+        is False
+    )
+    assert resume_calls == []
+
+
+def test_did_finish_loading_appcast_converts_items():
+    delegate = _FullDelegate()
+    adapter = make_delegate_adapter(delegate)
+    item = _FakeItem()
+    adapter.updater_didFinishLoadingAppcast_(None, _FakeAppcast([item]))
+    assert delegate.events[0][0] == "appcast"
+    infos = delegate.events[0][1]
+    assert len(infos) == 1
+    assert infos[0].version_string == "2"
+    assert infos[0].display_version_string == "2.0"
+
+
+def test_did_not_find_update_without_error_passes_none():
+    delegate = _FullDelegate()
+    adapter = make_delegate_adapter(delegate)
+    adapter.updaterDidNotFindUpdate_(None)
+    assert delegate.events == [("not_found", None)]
+
+
+def test_best_valid_update_returns_matching_item():
+    delegate = _FullDelegate()
+    adapter = make_delegate_adapter(delegate)
+    first = _FakeItem()
+    second = _FakeItem()
+    chosen = adapter.bestValidUpdateInAppcast_forUpdater_(
+        _FakeAppcast([first, second]), None
+    )
+    assert chosen is first
+
+
+def test_postpone_relaunch_false_does_not_require_resume():
+    delegate = _FullDelegate()
+    adapter = make_delegate_adapter(delegate)
+    item = _FakeItem()
+    called: list[str] = []
+    postponed = adapter.updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(
+        None, item, lambda: called.append("resume")
+    )
+    assert postponed is False
+    assert called == []
+    assert delegate.events[0][0] == "postpone"
+    assert delegate.events[0][1].version_string == "2"
+    assert callable(delegate.events[0][2])
+
+
+class _PostponeDelegate:
+    def updater_should_postpone_relaunch(self, *, update, resume):
+        self.update = update
+        self.resume = resume
+        return True
+
+
+def test_postpone_relaunch_true_resume_invokes_block():
+    delegate = _PostponeDelegate()
+    adapter = make_delegate_adapter(delegate)
+    called: list[str] = []
+    postponed = adapter.updater_shouldPostponeRelaunchForUpdate_untilInvokingBlock_(
+        None, _FakeItem(), lambda: called.append("resume")
+    )
+    assert postponed is True
+    assert called == []
+    delegate.resume()
+    assert called == ["resume"]
+
+
+class _QuitInstallDelegate:
+    def updater_will_install_update_on_quit(self, *, update, install_immediately):
+        self.update = update
+        self.install_immediately = install_immediately
+        return True
+
+
+def test_will_install_on_quit_true_install_immediately_invokes_block():
+    delegate = _QuitInstallDelegate()
+    adapter = make_delegate_adapter(delegate)
+    called: list[str] = []
+    taken = adapter.updater_willInstallUpdateOnQuit_immediateInstallationBlock_(
+        None, _FakeItem(), lambda: called.append("install")
+    )
+    assert taken is True
+    assert delegate.update.version_string == "2"
+    delegate.install_immediately()
+    assert called == ["install"]
