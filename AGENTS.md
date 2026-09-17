@@ -165,13 +165,17 @@ SparkleHelper 是为 macOS Sparkle / Windows WinSparkle 原生更新框架提供
 
 ## 5. 本地验证
 
-改动 Python 代码时，提交前运行：
+改动 Python 代码时，提交前运行（首条为环境准备，后两条为验收命令）：
 
 ```bash
+uv sync --locked --extra dev
 uv run ruff check .
-uv run ruff format .
-uv run pytest tests/
+uv run --locked pytest
 ```
+
+后两条与 `.github/workflows/ci.yml` 里 test job 的命令逐字相同，两条全绿即视为通过。`dev` 是 `pyproject.toml` 的 `[project.optional-dependencies]` extra（`pytest`、`pytest-cov`、`ruff`），新环境或换解释器后需先执行首行的同步，否则后两条取不到可执行文件。
+
+CI 的门禁是 `ruff check`。`ruff format` 是格式化工具：仓库既有文件并非 format-clean，全仓执行会重排大量既有文件（README 内嵌的 python 代码块也在其列），因此格式化改动独立走一次 `style` 提交，并只点名目标文件。
 
 每次变更前运行 `git diff --check`。纯文档改动可跳过代码检查（不会影响生成文件、构建配置或运行时行为）。
 
@@ -254,8 +258,9 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 
 ## 11. 开发命令
 
-- 单元测试：`uv run pytest tests/`
-- 静态检查：`uv run ruff check .`（CI 已启用，pyproject 顶层无 ruff，命令同 CI）
+- 环境准备：`uv sync --locked --extra dev`（装齐 `pytest` / `pytest-cov` / `ruff`，见第 5 节）
+- 单元测试与静态检查：命令见第 5 节，与 CI 的 test job 同源
+- ruff 配置：`pyproject.toml` 的 `[tool.ruff]`、`[tool.ruff.lint]`、`[tool.ruff.format]`（line-length 88、target-version py311、`extend-exclude` 排除 vendored submodule）
 - wheel 构建：`uv build --wheel`（解析并下载上游最新 native 资源）
 - 离线构建：`SPARKLEHELPER_SKIP_NATIVE_SYNC=1 uv build --wheel`
 - 依赖管理：用 `uv`（`uv sync` / `uv lock`），不用 `pip`
@@ -263,7 +268,7 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 ## 12. 常见陷阱
 
 - **submodule（`Sparkle/`、`winsparkle/`）仅作源码浏览参考，不参与构建**。
-- **framework 版本随上游 latest 漂移**：当前 2.9.4；wheel 内容随上游最新 release 漂移，两次构建可能不同。
+- **framework 与发布工具的版本随上游 latest 漂移**：wheel 内嵌的是构建当时 `releases/latest` 那一版，两次构建可能不同。要知道实际内嵌版本就查上游 release 标签——上游仓库与资产名匹配式都写在 `scripts/sync_native_deps.py` 顶部的两个资产配置常量里，macOS 与 Windows 各一条，按其中的 `repo` 直接查最新 tag 即可。
 - **`SPARKLEHELPER_FRAMEWORK_PATH` 运行时优先级低于主 bundle**：若 `.app` 内已嵌入 framework（打包场景常态），env 实际不生效；只有 hook 打包期 env 才优先。
 - **delegate 回调异常被吞**：异常仅记日志，需在日志中排查。
 - **KVO `Subscription` 必须持有**：`Subscription.cancel()` 幂等、`__del__` 兜底注销，但对象被 GC 前不应丢失引用。
@@ -281,4 +286,4 @@ sparklehelper/__init__.py       公共导出（Updater/UpdaterDelegate/Decision/
 
 - 完全 mock 真实 ObjC/ctypes：用假 `objc`/`Foundation` 模块注入 `sys.modules`、`_MockSPUUpdater`/`_MockController` 假 ObjC 对象、mock DLL。
 - 已知盲区：onefile spec AST 修补无测试；release 命令路径无测试；Windows 真实 DLL 与真实 Sparkle framework 从未加载；无 wheel 构建集成测试；无 PyInstaller/Nuitka 端到端构建测试。
-- 本机若已同步 Sparkle.framework，`test_framework.py` 的 framework 存在性测试可跑（`uv run --locked pytest` → 162 passed）。
+- `test_framework.py` 里 framework 与 license 的存在性用例用 `skipif` 挂住对应产物：先跑一次联网同步（见第 10.1 节）它们才参与统计。判定标准是无 failed 与 error；skip 只应来自非 darwin 平台的 `darwin` marker 与上述 `skipif`。
